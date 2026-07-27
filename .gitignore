@@ -1,0 +1,41 @@
+# ─── Datasets (large; download separately — see data/*/DOWNLOAD.md) ───
+data/
+*.zip
+*.rar
+*.tar
+*.tar.bz2
+*.tgz
+
+# ─── Python virtual environment ───
+.venv/
+venv/
+env/
+
+# ─── Python caches / build ───
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ─── Training / run artifacts (regenerable) ───
+logs/
+*.log
+results_*/
+results/
+
+# ─── Model checkpoints (kept local only; not shared) ───
+checkpoints*/
+
+# ─── OS / editor junk ───
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# ─── Secrets (never commit) ───
+.env
+*.pem
+kaggle.json

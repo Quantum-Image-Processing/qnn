@@ -1,0 +1,738 @@
+<title>CMFD Swap-Test QNN — Progress Report</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:      #f9f9f7;
+    --surface:   #fcfcfb;
+    --surface-2: #f2f1ec;
+    --ink:       #0b0b0b;
+    --ink-2:     #52514e;
+    --muted:     #898781;
+    --grid:      #e1e0d9;
+    --baseline:  #c3c2b7;
+    --border:    rgba(11,11,11,0.10);
+    --accent:    #2a78d6;
+    --accent-ink:#ffffff;
+    --violet:    #4a3aa7;
+    --good:      #0ca30c;
+    --good-bg:   #e9f7e9;
+    --warning:   #b8860b;
+    --warning-bg:#fdf3df;
+    --critical:  #d03b3b;
+    --critical-bg:#fbeaea;
+    --serif: ui-serif, Charter, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, "Roboto Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page:      #0d0d0d;
+      --surface:   #1a1a19;
+      --surface-2: #202120;
+      --ink:       #ffffff;
+      --ink-2:     #c3c2b7;
+      --muted:     #93a39d;
+      --grid:      #2c2c2a;
+      --baseline:  #383835;
+      --border:    rgba(255,255,255,0.10);
+      --accent:    #3987e5;
+      --accent-ink:#0b0b0b;
+      --violet:    #9085e9;
+      --good:      #3fbf3f;
+      --good-bg:   #10240f;
+      --warning:   #e0b64a;
+      --warning-bg:#2a2210;
+      --critical:  #e66767;
+      --critical-bg:#2a1414;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page:      #0d0d0d;
+    --surface:   #1a1a19;
+    --surface-2: #202120;
+    --ink:       #ffffff;
+    --ink-2:     #c3c2b7;
+    --muted:     #93a39d;
+    --grid:      #2c2c2a;
+    --baseline:  #383835;
+    --border:    rgba(255,255,255,0.10);
+    --accent:    #3987e5;
+    --accent-ink:#0b0b0b;
+    --violet:    #9085e9;
+    --good:      #3fbf3f;
+    --good-bg:   #10240f;
+    --warning:   #e0b64a;
+    --warning-bg:#2a2210;
+    --critical:  #e66767;
+    --critical-bg:#2a1414;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 48px 24px 96px; }
+
+  h1, h2, h3 { font-family: var(--serif); font-weight: 600; text-wrap: balance; margin: 0; }
+  p { margin: 0 0 1em; max-width: 68ch; }
+  a { color: var(--accent); }
+
+  /* ---------- Header ---------- */
+  header.top { margin-bottom: 40px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+  }
+  h1 { font-size: 34px; line-height: 1.15; margin-bottom: 10px; }
+  .subtitle { color: var(--ink-2); font-size: 17px; max-width: 62ch; }
+
+  .status-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.02em;
+    padding: 5px 10px; border-radius: 5px; border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .chip.good .dot { background: var(--good); }
+  .chip.warning .dot { background: var(--warning); }
+  .chip.critical .dot { background: var(--critical); }
+  .chip.pending .dot { background: var(--muted); }
+
+  .btn-download {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.02em;
+    padding: 8px 14px; border-radius: 7px; border: 1px solid var(--accent);
+    background: var(--accent); color: var(--accent-ink); cursor: pointer;
+    margin-top: 20px;
+  }
+  .btn-download:hover { filter: brightness(1.06); }
+  .btn-download svg { width: 13px; height: 13px; }
+
+  /* ---------- Timeline ---------- */
+  .timeline {
+    display: flex; overflow-x: auto; gap: 0; margin: 40px 0 48px;
+    border-top: 1px solid var(--baseline); padding-top: 18px;
+  }
+  .tstep { flex: 1 0 140px; padding-right: 18px; position: relative; }
+  .tstep::before {
+    content: ""; position: absolute; top: -19px; left: 0; width: 9px; height: 9px;
+    border-radius: 50%; background: var(--accent); border: 2px solid var(--page);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .tstep.pending::before { background: var(--surface); box-shadow: 0 0 0 1px var(--muted); }
+  .tstep .tlabel { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .tstep .ttitle { font-size: 13.5px; font-weight: 600; line-height: 1.3; }
+
+  /* ---------- Sections ---------- */
+  section { margin-bottom: 52px; }
+  .section-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+  .section-num { font-family: var(--mono); color: var(--muted); font-size: 13px; }
+  h2 { font-size: 23px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 22px 24px; margin-bottom: 16px;
+  }
+  .card.critical { background: var(--critical-bg); border-color: color-mix(in srgb, var(--critical) 35%, var(--border)); }
+  .card.good { background: var(--good-bg); border-color: color-mix(in srgb, var(--good) 35%, var(--border)); }
+  .card.warning { background: var(--warning-bg); border-color: color-mix(in srgb, var(--warning) 35%, var(--border)); }
+  .card h3 { font-size: 16px; margin-bottom: 8px; }
+  .card .kicker {
+    font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+    margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+  }
+  .card.critical .kicker { color: var(--critical); }
+  .card.good .kicker { color: var(--good); }
+  .card.warning .kicker { color: var(--warning); }
+
+  .proof {
+    font-family: var(--mono); font-size: 13px; background: var(--surface-2);
+    border-radius: 7px; padding: 12px 14px; margin: 10px 0; overflow-x: auto;
+    border-left: 3px solid var(--violet); white-space: pre;
+  }
+
+  /* ---------- Stat tiles ---------- */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 18px 0; }
+  .stat {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 16px;
+  }
+  .stat .slabel { font-family: var(--mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+  .stat .sval { font-family: var(--serif); font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .stat .sval.small { font-size: 19px; }
+  .stat .ssub { font-size: 12.5px; color: var(--ink-2); margin-top: 4px; }
+  .stat.arrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .stat .before { color: var(--muted); text-decoration: line-through; font-size: 15px; }
+  .stat .after { color: var(--good); font-weight: 600; }
+
+  /* ---------- Charts ---------- */
+  .chart-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 18px 0; }
+  .chart-grid.two { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 720px) { .chart-grid, .chart-grid.two { grid-template-columns: 1fr; } }
+  .chartbox {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px 10px; position: relative;
+  }
+  .chartbox .ctitle { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+  .chartbox .csub { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .chartbox svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart-line { fill: none; stroke-width: 2px; stroke-linecap: round; stroke-linejoin: round; }
+  .chart-grid-line { stroke: var(--grid); stroke-width: 1px; }
+  .chart-baseline { stroke: var(--baseline); stroke-width: 1px; }
+  .chart-tick { font-family: var(--mono); font-size: 9.5px; fill: var(--muted); }
+  .chart-end-dot { stroke: var(--surface); stroke-width: 2px; }
+  .chart-end-label { font-family: var(--mono); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .chart-hover-line { stroke: var(--muted); stroke-width: 1px; stroke-dasharray: 2 2; opacity: 0; pointer-events: none; }
+  .chart-hover-dot { opacity: 0; pointer-events: none; }
+  .chart-tooltip {
+    position: absolute; font-family: var(--mono); font-size: 11px; background: var(--ink);
+    color: var(--page); padding: 4px 7px; border-radius: 5px; pointer-events: none;
+    opacity: 0; transform: translate(-50%, -130%); white-space: nowrap; z-index: 5;
+    font-variant-numeric: tabular-nums;
+  }
+  .chart-capture { fill: transparent; }
+
+  /* ---------- Table ---------- */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; background: var(--surface); }
+  thead th {
+    text-align: left; font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--muted); font-weight: 500;
+    padding: 10px 14px; border-bottom: 1px solid var(--baseline);
+  }
+  tbody td { padding: 10px 14px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr.highlight td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  td.num, th.num { text-align: right; }
+
+  /* ---------- Checklist ---------- */
+  .checklist { display: flex; flex-direction: column; gap: 10px; }
+  .citem {
+    display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
+  }
+  .citem .mark {
+    flex: none; width: 20px; height: 20px; border-radius: 50%; margin-top: 1px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+  }
+  .citem.done .mark { background: var(--good); color: #fff; }
+  .citem.progress .mark { background: var(--warning); color: #fff; }
+  .citem.pending .mark { background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); }
+  .citem .ctext .cttl { font-weight: 600; font-size: 14.5px; }
+  .citem .ctext .cdesc { font-size: 13.5px; color: var(--ink-2); margin-top: 2px; }
+
+  footer { border-top: 1px solid var(--baseline); padding-top: 20px; margin-top: 56px; color: var(--ink-2); font-size: 13.5px; }
+  footer .fmono { font-family: var(--mono); color: var(--muted); font-size: 12px; }
+
+  /* ---------- Print / PDF ---------- */
+  @media print {
+    :root { color-scheme: light; }
+    body { background: #fff; color: #0b0b0b; font-size: 12.5px; }
+    .wrap { max-width: 100%; padding: 0; }
+    .btn-download { display: none; }
+    a { color: #0b0b0b; text-decoration: none; }
+    section { margin-bottom: 26px; }
+    .section-head { break-after: avoid; }
+    .card, .stat, .chartbox, .calc, .citem, .tablewrap, .chart-grid, .chart-grid.two, .stats { break-inside: avoid; }
+    .chart-grid, .chart-grid.two { grid-template-columns: repeat(3, 1fr); }
+    .chart-grid.two { grid-template-columns: repeat(2, 1fr); }
+    .timeline { overflow: visible; flex-wrap: wrap; }
+    .tstep { flex: 1 0 30%; margin-bottom: 14px; }
+    .card, .stat, .chartbox, .chip, .calc, .citem { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .chart-hover-line, .chart-hover-dot, .chart-tooltip { display: none !important; }
+    .calc-field input[type="range"] { display: none; }
+    h1 { font-size: 27px; }
+    h2 { font-size: 18px; }
+    footer { margin-top: 30px; }
+  }
+
+  /* ---------- Calculator ---------- */
+  .calc {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px 22px;
+  }
+  .calc .kicker {
+    font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--muted); margin-bottom: 14px;
+  }
+  .calc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 18px; }
+  @media (max-width: 640px) { .calc-grid { grid-template-columns: 1fr; } }
+  .calc-field label {
+    display: block; font-size: 12.5px; color: var(--ink-2); margin-bottom: 6px;
+  }
+  .calc-field .fhint { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: 4px; }
+  .calc-field input[type="number"] {
+    width: 100%; font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums;
+    padding: 8px 10px; border-radius: 6px; border: 1px solid var(--baseline);
+    background: var(--surface-2); color: var(--ink);
+  }
+  .calc-field input[type="range"] { width: 100%; accent-color: var(--accent); margin-top: 4px; }
+  .calc-out {
+    display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    padding-top: 16px; border-top: 1px dashed var(--baseline);
+  }
+  .calc-out .cval { font-family: var(--serif); font-size: 32px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .calc-out .clabel { font-family: var(--mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .calc-out .cmeta { font-size: 12.5px; color: var(--ink-2); text-align: right; }
+</style>
+
+<div class="wrap">
+
+  <header class="top">
+    <div class="eyebrow">FYP Progress Report · Phase 2</div>
+    <h1>Siamese Swap-Test QNN for Copy-Move Forgery Detection</h1>
+    <p class="subtitle">Replacing the v1 per-patch classifier with a pairwise-matching quantum architecture. This page tracks what's been verified, what broke, what was fixed, and what's still open.</p>
+    <div class="status-row">
+      <span class="chip good"><span class="dot"></span>architecture bug found &amp; fixed</span>
+      <span class="chip good"><span class="dot"></span>3 training runs completed</span>
+      <span class="chip warning"><span class="dot"></span>real-image testing: in progress</span>
+      <span class="chip pending"><span class="dot"></span>rotation-aware filtering: not started</span>
+      <span class="chip pending"><span class="dot"></span>visualization tool: not started</span>
+    </div>
+    <button class="btn-download" id="download-btn" type="button">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2v8m0 0-3-3m3 3 3-3M2.5 12.5v1a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-1"/></svg>
+      Download this report (.html)
+    </button>
+  </header>
+
+  <div class="timeline">
+    <div class="tstep">
+      <div class="tlabel">01</div>
+      <div class="ttitle">Real CoMoFoD dataset wired up, category labels corrected</div>
+    </div>
+    <div class="tstep">
+      <div class="tlabel">02</div>
+      <div class="ttitle">Training loss flat → traced to a dead gradient</div>
+    </div>
+    <div class="tstep">
+      <div class="tlabel">03</div>
+      <div class="ttitle">Root cause proven: tied weights invisible to swap test</div>
+    </div>
+    <div class="tstep">
+      <div class="tlabel">04</div>
+      <div class="ttitle">Fixed with data re-uploading; gradient confirmed real</div>
+    </div>
+    <div class="tstep">
+      <div class="tlabel">05</div>
+      <div class="ttitle">Full run: 10 epochs, entire clean pool, 60k pairs</div>
+    </div>
+    <div class="tstep pending">
+      <div class="tlabel">06</div>
+      <div class="ttitle">Real-image F1/IoU benchmark — in progress</div>
+    </div>
+    <div class="tstep pending">
+      <div class="tlabel">07</div>
+      <div class="ttitle">Rotation-aware offset voting — not started</div>
+    </div>
+  </div>
+
+  <!-- ===================== SECTION: THE BUG ===================== -->
+  <section id="bug">
+    <div class="section-head"><span class="section-num">§1</span><h2>What went wrong</h2></div>
+    <p>A 5-epoch training smoke test showed a loss that never decreased. Rather than assume it just needed more epochs, the gradient was measured directly.</p>
+
+    <div class="card critical">
+      <div class="kicker">● Critical — root cause</div>
+      <h3>The tied weights were mathematically invisible to the swap test</h3>
+      <p>Both quantum registers were embedded with fixed data, then the <em>same</em> unitary U(w) was applied to both before the swap test read out their overlap. For any unitary, that overlap reduces algebraically to the raw input overlap — the weights cancel out completely, everywhere in parameter space:</p>
+      <div class="proof">|⟨U(w)f_a | U(w)f_b⟩|²  =  |⟨f_a| U†(w)U(w) |f_b⟩|²  =  |⟨f_a|f_b⟩|²      for ANY U(w)</div>
+      <p style="margin-bottom:0">Confirmed empirically two ways: the measured gradient was ~6.5×10⁻¹⁶ (zero to machine precision) at every qubit count tested, and five independent random weight settings produced the <em>exact same</em> similarity score — matching the raw classical cosine similarity of the input features, bit for bit.</p>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="slabel">Gradient norm, pre-fix</div>
+        <div class="sval small">6.5 × 10⁻¹⁶</div>
+        <div class="ssub">zero to machine precision</div>
+      </div>
+      <div class="stat">
+        <div class="slabel">Weight movement over 5 epochs</div>
+        <div class="sval small">~3 × 10⁻⁹</div>
+        <div class="ssub">floating-point noise only</div>
+      </div>
+      <div class="stat">
+        <div class="slabel">Similarity across 5 random weight draws</div>
+        <div class="sval small">0.083549</div>
+        <div class="ssub">identical, every time</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SECTION: THE FIX ===================== -->
+  <section id="fix">
+    <div class="section-head"><span class="section-num">§2</span><h2>The fix</h2></div>
+    <div class="card good">
+      <div class="kicker">✓ Resolved — data re-uploading</div>
+      <h3>Weights and data now interleave inside the same gates</h3>
+      <p style="margin-bottom:0">Instead of a fixed embedding followed by a data-independent weight block, the trainable weights and each register's own classical features are now combined additively inside the same rotation gates, repeated across layers. Because register A and register B carry different data at every layer, there's no shared data-independent unitary left for the swap test to cancel against. Tied weights and the swap-test readout — both flagged as deliberate — are unchanged.</p>
+    </div>
+
+    <div class="stats">
+      <div class="stat arrow">
+        <div>
+          <div class="slabel">Gradient norm</div>
+          <div class="sval small"><span class="before">~0</span> → <span class="after">0.027</span></div>
+        </div>
+      </div>
+      <div class="stat arrow">
+        <div>
+          <div class="slabel">Weight movement (per run)</div>
+          <div class="sval small"><span class="before">3e-9</span> → <span class="after">0.46</span></div>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="slabel">Held-out separation, full run</div>
+        <div class="sval">0.111 → 0.189</div>
+        <div class="ssub">monotonic across 10 epochs</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SECTION: TRAINING RESULTS ===================== -->
+  <section id="training">
+    <div class="section-head"><span class="section-num">§3</span><h2>Training runs</h2></div>
+    <p>Three runs, same fixed architecture, increasing scale. Raw per-epoch loss stays noisy in all of them — each epoch redraws a random image sample, so batch noise dominates at these run sizes. The shared y-axis below makes the level shift visible: pre-fix hovers near 0.40–0.46 with no possible mechanism to move (the gradient was zero); post-fix runs settle lower, around 0.30–0.35.</p>
+
+    <div class="chart-grid" id="loss-charts"></div>
+
+    <p>The cleaner signal is <strong>held-out separation</strong> — positive vs. negative pair scores on a fixed synthetic validation batch the model never trains on — measured across the full 10-epoch / 60,000-pair run:</p>
+
+    <div class="chart-grid two" id="sep-charts"></div>
+    <p style="font-size:13.5px;color:var(--ink-2)">Separation climbs steadily (real signal) — but pairwise rank accuracy, arguably the metric that matters more, stays flat at the random-init baseline. Training is pushing negative-pair scores down on average without becoming better at ranking any <em>specific</em> pair correctly. Reported as-is, not smoothed over.</p>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="slabel">Total pairs trained on (all runs)</div>
+        <div class="sval">78,750</div>
+      </div>
+      <div class="stat">
+        <div class="slabel">Full run wall time</div>
+        <div class="sval">7h 20m</div>
+        <div class="ssub">10 epochs × 200 images × 30 pairs</div>
+      </div>
+      <div class="stat">
+        <div class="slabel">Measured throughput</div>
+        <div class="sval small">0.44 s / pair</div>
+        <div class="ssub">training (gradient); 155 pairs/s at inference</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SECTION: TIME COST ===================== -->
+  <section id="cost">
+    <div class="section-head"><span class="section-num">§4</span><h2>Training time, if we scale further</h2></div>
+    <p>Extrapolated from measured throughput (0.44 s/pair), not estimated in advance.</p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Scenario</th><th class="num">Total pairs</th><th class="num">Est. time</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Medium run — 15 epochs × 50 img × 12 pairs</td><td class="num">9,000</td><td class="num">1h 01m <span class="fmono">(actual)</span></td></tr>
+          <tr class="highlight"><td>Full run — 10 epochs × 200 img × 30 pairs</td><td class="num">60,000</td><td class="num">7h 20m <span class="fmono">(actual)</span></td></tr>
+          <tr><td>Double the full run — 20 epochs</td><td class="num">120,000</td><td class="num">~14.7 h</td></tr>
+          <tr><td>Triple the full run — 30 epochs</td><td class="num">180,000</td><td class="num">~22 h</td></tr>
+          <tr><td>Exhaustive — every patch position, 1 epoch</td><td class="num">~168,000</td><td class="num">~20.5 h</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="margin-top:24px">Plug in your own numbers — e.g. "if I only use 80 images, how long":</p>
+    <div class="calc">
+      <div class="kicker">Time calculator · built from measured throughput (0.44 s/pair)</div>
+      <div class="calc-grid">
+        <div class="calc-field">
+          <label for="calc-images">Training images used</label>
+          <input type="number" id="calc-images" min="1" max="200" value="200" step="1">
+          <input type="range" id="calc-images-r" min="1" max="200" value="200" step="1">
+          <div class="fhint">out of 200 clean images available</div>
+        </div>
+        <div class="calc-field">
+          <label for="calc-epochs">Epochs</label>
+          <input type="number" id="calc-epochs" min="1" max="60" value="10" step="1">
+          <input type="range" id="calc-epochs-r" min="1" max="60" value="10" step="1">
+        </div>
+        <div class="calc-field">
+          <label for="calc-pairs">Pairs per image</label>
+          <input type="number" id="calc-pairs" min="1" max="200" value="30" step="1">
+          <input type="range" id="calc-pairs-r" min="1" max="200" value="30" step="1">
+          <div class="fhint">6/6 pos-neg split at 12; scales the same way</div>
+        </div>
+      </div>
+      <div class="calc-out">
+        <div>
+          <div class="clabel">Estimated training time</div>
+          <div class="cval" id="calc-time">7h 20m</div>
+        </div>
+        <div class="cmeta" id="calc-meta">60,000 total pairs · 200 images/epoch × 10 epochs × 30 pairs/image</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SECTION: STATUS ===================== -->
+  <section id="status">
+    <div class="section-head"><span class="section-num">§5</span><h2>Current status against the 5-step plan</h2></div>
+    <div class="checklist">
+      <div class="citem done">
+        <div class="mark">✓</div>
+        <div class="ctext">
+          <div class="cttl">1 · Train &amp; sanity-check</div>
+          <div class="cdesc">Done — plus the architecture bug found and fixed along the way, which wasn't in the original plan.</div>
+        </div>
+      </div>
+      <div class="citem progress">
+        <div class="mark">…</div>
+        <div class="ctext">
+          <div class="cttl">2 · Test on real images, per-category F1/IoU</div>
+          <div class="cdesc">In progress. One early data point (image 001_F, no post-processing): F1 = 0.032, IoU = 0.016 — recall 0.81 but precision 0.017 (63,346 false-positive pixels vs. 1,065 true positives). Concerning, but it's one image — the full stratified 10-image benchmark hasn't run yet.</div>
+        </div>
+      </div>
+      <div class="citem pending">
+        <div class="mark">3</div>
+        <div class="ctext">
+          <div class="cttl">3 · Rotation-aware offset voting</div>
+          <div class="cdesc">Not started. Will add a dtheta bin to the offset vote, with a flag to fall back to translation-only.</div>
+        </div>
+      </div>
+      <div class="citem pending">
+        <div class="mark">4</div>
+        <div class="ctext">
+          <div class="cttl">4 · Grid search (sim-threshold, block-window, min-offset-votes)</div>
+          <div class="cdesc">Not started — blocked on step 2's baseline numbers.</div>
+        </div>
+      </div>
+      <div class="citem pending">
+        <div class="mark">5</div>
+        <div class="ctext">
+          <div class="cttl">5 · 5-panel visualization tool</div>
+          <div class="cdesc">Not started.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>Generated from real run logs and checkpoint diagnostics — no figures on this page are illustrative placeholders.</div>
+    <div class="fmono" style="margin-top:6px">checkpoints_full/swaptest_qnn_epoch10.npy · code/cmfd_swaptest_pipeline.py</div>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  function makeLineChart(root, opts) {
+    var data = opts.data;                 // [{x, y}, ...]
+    var color = opts.color || getVar('--accent');
+    var w = 260, h = 130, padL = 30, padR = 14, padT = 10, padB = 20;
+    var innerW = w - padL - padR, innerH = h - padT - padB;
+    var ys = data.map(function(d){ return d.y; });
+    var yMin = opts.yMin !== undefined ? opts.yMin : Math.min.apply(null, ys);
+    var yMax = opts.yMax !== undefined ? opts.yMax : Math.max.apply(null, ys);
+    if (yMax === yMin) { yMax += 1; yMin -= 1; }
+    var pad = (yMax - yMin) * 0.12;
+    yMin -= pad; yMax += pad;
+    var xMin = data[0].x, xMax = data[data.length - 1].x;
+
+    function xPix(x) { return padL + (xMax === xMin ? 0 : (x - xMin) / (xMax - xMin)) * innerW; }
+    function yPix(y) { return padT + innerH - ((y - yMin) / (yMax - yMin)) * innerH; }
+
+    var svgNS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("viewBox", "0 0 " + w + " " + h);
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+
+    // gridlines (3 horizontal)
+    var gridN = 3;
+    for (var i = 0; i <= gridN; i++) {
+      var gy = padT + (innerH / gridN) * i;
+      var gl = document.createElementNS(svgNS, "line");
+      gl.setAttribute("x1", padL); gl.setAttribute("x2", w - padR);
+      gl.setAttribute("y1", gy); gl.setAttribute("y2", gy);
+      gl.setAttribute("class", "chart-grid-line");
+      svg.appendChild(gl);
+      var val = yMax - (yMax - yMin) * (i / gridN);
+      var lbl = document.createElementNS(svgNS, "text");
+      lbl.setAttribute("x", 2); lbl.setAttribute("y", gy + 3);
+      lbl.setAttribute("class", "chart-tick");
+      lbl.textContent = val.toFixed(opts.decimals || 2);
+      svg.appendChild(lbl);
+    }
+    // baseline
+    var base = document.createElementNS(svgNS, "line");
+    base.setAttribute("x1", padL); base.setAttribute("x2", w - padR);
+    base.setAttribute("y1", h - padB); base.setAttribute("y2", h - padB);
+    base.setAttribute("class", "chart-baseline");
+    svg.appendChild(base);
+
+    // path
+    var d = data.map(function(p, i) {
+      return (i === 0 ? "M" : "L") + xPix(p.x).toFixed(2) + "," + yPix(p.y).toFixed(2);
+    }).join(" ");
+    var path = document.createElementNS(svgNS, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("class", "chart-line");
+    path.setAttribute("stroke", color);
+    svg.appendChild(path);
+
+    // end dot + label
+    var last = data[data.length - 1];
+    var dot = document.createElementNS(svgNS, "circle");
+    dot.setAttribute("cx", xPix(last.x)); dot.setAttribute("cy", yPix(last.y));
+    dot.setAttribute("r", 4); dot.setAttribute("fill", color);
+    dot.setAttribute("class", "chart-end-dot");
+    svg.appendChild(dot);
+    var lab = document.createElementNS(svgNS, "text");
+    lab.setAttribute("x", xPix(last.x) - 4); lab.setAttribute("y", yPix(last.y) - 8);
+    lab.setAttribute("text-anchor", "end");
+    lab.setAttribute("class", "chart-end-label");
+    lab.setAttribute("fill", color);
+    lab.textContent = last.y.toFixed(opts.decimals || 3);
+    svg.appendChild(lab);
+
+    // hover crosshair
+    var hoverLine = document.createElementNS(svgNS, "line");
+    hoverLine.setAttribute("y1", padT); hoverLine.setAttribute("y2", h - padB);
+    hoverLine.setAttribute("class", "chart-hover-line");
+    svg.appendChild(hoverLine);
+    var hoverDot = document.createElementNS(svgNS, "circle");
+    hoverDot.setAttribute("r", 4); hoverDot.setAttribute("fill", color);
+    hoverDot.setAttribute("class", "chart-hover-dot chart-end-dot");
+    svg.appendChild(hoverDot);
+    var capture = document.createElementNS(svgNS, "rect");
+    capture.setAttribute("x", padL); capture.setAttribute("y", 0);
+    capture.setAttribute("width", innerW); capture.setAttribute("height", h);
+    capture.setAttribute("class", "chart-capture");
+    svg.appendChild(capture);
+
+    root.appendChild(svg);
+    var tip = document.createElement("div");
+    tip.className = "chart-tooltip";
+    root.appendChild(tip);
+
+    function nearest(px) {
+      var frac = (px - padL) / innerW;
+      var idx = Math.round(frac * (data.length - 1));
+      idx = Math.max(0, Math.min(data.length - 1, idx));
+      return data[idx];
+    }
+    capture.addEventListener("mousemove", function (e) {
+      var rect = svg.getBoundingClientRect();
+      var scale = w / rect.width;
+      var px = (e.clientX - rect.left) * scale;
+      var p = nearest(px);
+      var cx = xPix(p.x), cy = yPix(p.y);
+      hoverLine.setAttribute("x1", cx); hoverLine.setAttribute("x2", cx);
+      hoverLine.style.opacity = 1;
+      hoverDot.setAttribute("cx", cx); hoverDot.setAttribute("cy", cy);
+      hoverDot.style.opacity = 1;
+      tip.style.opacity = 1;
+      tip.style.left = (cx / w * 100) + "%";
+      tip.style.top = (cy / h * 100) + "%";
+      tip.textContent = (opts.xLabel || "x") + " " + p.x + " · " + p.y.toFixed(opts.decimals || 3);
+    });
+    capture.addEventListener("mouseleave", function () {
+      hoverLine.style.opacity = 0; hoverDot.style.opacity = 0; tip.style.opacity = 0;
+    });
+  }
+
+  function getVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function box(container, title, sub) {
+    var el = document.createElement("div");
+    el.className = "chartbox";
+    el.innerHTML = '<div class="ctitle">' + title + '</div><div class="csub">' + sub + '</div>';
+    container.appendChild(el);
+    return el;
+  }
+
+  // ---- Loss curves: three runs, shared y-domain ----
+  var lossCharts = document.getElementById("loss-charts");
+  var preFix = [0.3977,0.4344,0.4056,0.4431,0.4561];
+  var medium = [0.3316,0.3435,0.3239,0.3455,0.3434,0.3120,0.3203,0.3397,0.3285,0.3397,0.3221,0.3073,0.3170,0.3219,0.3333];
+  var full   = [0.3315,0.3279,0.3255,0.3302,0.3322,0.3152,0.3290,0.3284,0.3252,0.3269];
+  var sharedMin = 0.28, sharedMax = 0.48;
+  var critical = getVar('--critical'), accent = getVar('--accent'), good = getVar('--good');
+
+  makeLineChart(box(lossCharts, "Pre-fix (broken)", "5 epochs · gradient ≈ 0"),
+    { data: preFix.map(function(v,i){return {x:i+1,y:v};}), color: critical, yMin: sharedMin, yMax: sharedMax, decimals: 3, xLabel: "epoch" });
+  makeLineChart(box(lossCharts, "Medium run", "15 epochs · 50 img/epoch"),
+    { data: medium.map(function(v,i){return {x:i+1,y:v};}), color: accent, yMin: sharedMin, yMax: sharedMax, decimals: 3, xLabel: "epoch" });
+  makeLineChart(box(lossCharts, "Full run", "10 epochs · 200 img/epoch"),
+    { data: full.map(function(v,i){return {x:i+1,y:v};}), color: accent, yMin: sharedMin, yMax: sharedMax, decimals: 3, xLabel: "epoch" });
+
+  // ---- Separation vs rank accuracy, full run ----
+  var sepCharts = document.getElementById("sep-charts");
+  var sep = [0.1109,0.1697,0.1754,0.1788,0.1814,0.1834,0.1853,0.1861,0.1871,0.1880,0.1892];
+  var rank = [0.8353,0.8311,0.8300,0.8311,0.8322,0.8328,0.8319,0.8328,0.8325,0.8333,0.8342];
+
+  makeLineChart(box(sepCharts, "Held-out separation", "pos-mean − neg-mean · climbs steadily"),
+    { data: sep.map(function(v,i){return {x:i,y:v};}), color: good, decimals: 3, xLabel: "epoch" });
+  makeLineChart(box(sepCharts, "Pairwise rank accuracy", "P(pos ranked above neg) · flat"),
+    { data: rank.map(function(v,i){return {x:i,y:v};}), color: getVar('--warning'), yMin: 0.80, yMax: 0.86, decimals: 3, xLabel: "epoch" });
+
+  // ---- Download this page as a standalone .html file ----
+  var downloadBtn = document.getElementById("download-btn");
+  if (downloadBtn) {
+    downloadBtn.addEventListener("click", function () {
+      var html = "<!doctype html>\n<html>\n<head><meta charset=\"utf-8\">\n"
+        + document.head.innerHTML + "\n</head>\n<body>\n" + document.body.innerHTML + "\n</body>\n</html>";
+      var blob = new Blob([html], { type: "text/html" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "cmfd_progress_report.html";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  // ---- Time-to-train calculator ----
+  var SEC_PER_PAIR = 0.44;
+  function fmtHours(totalSeconds) {
+    var h = Math.floor(totalSeconds / 3600);
+    var m = Math.round((totalSeconds % 3600) / 60);
+    if (h === 0) return m + "m";
+    if (m === 0) return h + "h";
+    return h + "h " + m + "m";
+  }
+  function fmtInt(n) { return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+
+  var imgIn = document.getElementById("calc-images"), imgR = document.getElementById("calc-images-r");
+  var epIn = document.getElementById("calc-epochs"), epR = document.getElementById("calc-epochs-r");
+  var pairIn = document.getElementById("calc-pairs"), pairR = document.getElementById("calc-pairs-r");
+  var timeOut = document.getElementById("calc-time"), metaOut = document.getElementById("calc-meta");
+
+  function syncPair(numEl, rangeEl) {
+    numEl.addEventListener("input", function () { rangeEl.value = numEl.value; recalc(); });
+    rangeEl.addEventListener("input", function () { numEl.value = rangeEl.value; recalc(); });
+  }
+  function recalc() {
+    var images = Math.max(1, parseInt(imgIn.value, 10) || 1);
+    var epochs = Math.max(1, parseInt(epIn.value, 10) || 1);
+    var pairs = Math.max(1, parseInt(pairIn.value, 10) || 1);
+    var totalPairs = images * epochs * pairs;
+    var totalSeconds = totalPairs * SEC_PER_PAIR;
+    timeOut.textContent = fmtHours(totalSeconds);
+    metaOut.textContent = fmtInt(totalPairs) + " total pairs · " + images + " images/epoch × "
+      + epochs + " epochs × " + pairs + " pairs/image";
+  }
+  if (imgIn) {
+    syncPair(imgIn, imgR); syncPair(epIn, epR); syncPair(pairIn, pairR);
+    recalc();
+  }
+})();
+</script>
