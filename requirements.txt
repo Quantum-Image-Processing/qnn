@@ -6,3 +6,7 @@ pandas>=1.3.0
 tqdm>=4.62.0
 matplotlib>=3.4.0
 pennylane>=0.27.0
+# demo dashboard + SIFT engine
+streamlit>=1.30.0
+opencv-python-headless>=4.6.0
+scikit-learn>=1.0.0
