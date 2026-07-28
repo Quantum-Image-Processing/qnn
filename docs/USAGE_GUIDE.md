@@ -1,260 +1,191 @@
 # Usage Guide - Parameters & Examples
 
-## Basic Command
-
-```bash
-python code/cmfd_comofod_pipeline.py --dataset-dir ./data/comofod
-```
+This covers the two ways to run the CMFD pure-QNN pipeline: the interactive
+Streamlit demo (`app.py`) and the command-line trainer/evaluator
+(`cmfd_swaptest_pipeline.py`). Both share the same `SwapTestSiameseQNN` model
+from `code/cmfd_swaptest_pipeline.py` — see that file's module docstring for
+the full architecture rationale.
 
 ---
 
-## All Parameters
+## 1. Streamlit Demo (`app.py`)
+
+```bash
+cd code
+streamlit run app.py
+```
+
+The sidebar offers exactly one choice: **Pure classical (SIFT+RANSAC)** or
+**Pure quantum (v3 swap-test QNN)**. Every other threshold is pinned at the
+values the Phase-2 evaluation used (`SIFT_CFG` / `QNN_CFG` at the top of
+`app.py`), so the two engines are compared as whole methods, not as piles of
+sliders. The quantum engine loads `checkpoints_pure/swaptest_qnn_epoch10.npz`
+by default — no training required to try the demo.
+
+---
+
+## 2. Command Line (`cmfd_swaptest_pipeline.py`)
+
+### Basic
+```bash
+python code/cmfd_swaptest_pipeline.py --mode test \
+    --dataset-dir ./data/comofod \
+    --checkpoint ./checkpoints_pure/swaptest_qnn_epoch10.npz
+```
 
 ### Required
 ```bash
+--mode {train,test}
 --dataset-dir PATH
 ```
-Path to CoMoFoD dataset (must have `Forged/` and `Masks/` subdirectories)
+`--dataset-dir` must contain either the legacy `Forged/`+`Masks/` layout, or a
+flat `CoMoFoD_small_v2/` directory (auto-detected either way).
+
+`--checkpoint PATH` is additionally required for `--mode test` — a `.npz` file
+produced by a prior `--mode train` run. v2's old `.npy` checkpoints are a
+different circuit shape and are deliberately rejected.
 
 ### Optional
 
-#### `--num-images N` (default: 10)
-Number of images to test
+#### `--patch-size N` (default: 8)
+Powers of two only. Sets qubits per register to `log2(patch_size²)`:
 ```bash
---num-images 5      # Test 5 images
---num-images 100    # Test 100 images
+--patch-size 8      # 6 qubits/register, 15 wires total, ~0.036 s/pair
+--patch-size 16     # 8 qubits/register, 19 wires total, ~0.82 s/pair (~23x slower)
 ```
+Simulation cost is exponential in total wires — don't raise this casually.
 
-#### `--patch-size N` (default: 32)
-Size of analysis patches (32×32 recommended)
-```bash
---patch-size 16     # Smaller patches (faster but less accurate)
---patch-size 32     # Balanced (recommended)
---patch-size 64     # Larger patches (slower but more context)
-```
+#### `--img-size N` (default: 128)
+Working resolution. Kept at 128 (down from 256) so that full tiling stays
+affordable: at 256px tiled, exhaustive pair scoring is ~520k pairs
+(~5 h/image); at 128px it's ~33k pairs (~20 min/image).
 
-#### `--stride N` (default: 4)
-Step size between patches (controls overlap)
-```bash
---stride 1          # Maximum overlap (slow, most accurate)
---stride 2          # High overlap (~15 min/image)
---stride 4          # Balanced (~5 min/image, recommended)
---stride 8          # Low overlap (~1 min/image)
---stride 16         # Minimum overlap (fast but coarse)
-```
+#### `--stride N` (default: 8, i.e. == `--patch-size`)
+**Must equal `--patch-size` for full coverage.** This is a correctness
+requirement, not a speed knob — a larger stride leaves gaps, and measured
+runs show a forged image and its authentic original can return *identical*
+output when the stride skips over the forged region entirely. The pipeline
+prints a `[WARN]` if `--stride > --patch-size`.
 
-**Stride Impact:**
-- Smaller stride → denser patches → finer localization → SLOWER
-- Larger stride → sparse patches → coarser localization → FASTER
+#### `--n-layers N` (default: 3)
+Data re-uploading blocks. Pixels are re-uploaded into the rotation angles at
+every layer — this is what keeps gradients alive under the swap test (see the
+`SwapTestSiameseQNN` docstring for why a plain tied unitary is provably
+degenerate here). More layers = more expressive and proportionally slower.
 
-#### `--n-qubits N` (default: 5)
-Number of qubits in quantum circuit (4-6 practical)
-```bash
---n-qubits 4        # 16 amplitudes (faster)
---n-qubits 5        # 32 amplitudes (balanced, recommended)
---n-qubits 6        # 64 amplitudes (more expressive, slower)
-```
+#### `--n-offset-qubits N` (default: 2)
+Wires for the in-circuit spatial-offset register (the quantum stand-in for a
+classical (dy, dx) vote).
 
-#### `--n-layers N` (default: 2)
-Number of variational circuit layers (1-3 recommended)
-```bash
---n-layers 1        # Shallow circuit (faster)
---n-layers 2        # Balanced (recommended)
---n-layers 3        # Deep circuit (more expressive, slower)
-```
+#### `--diff-method {auto,adjoint,backprop,parameter-shift}` (default: auto)
+`auto` uses `lightning.qubit` + `adjoint` when available (fastest simulator
+path). `parameter-shift` is the hardware-realizable gradient but costs 2
+circuit evals *per parameter* — much slower, use only if you need it.
 
-#### `--output-dir PATH` (default: ./results)
-Where to save visualizations and CSV results
-```bash
---output-dir ./results_test1
---output-dir /tmp/cmfd_results
-```
+#### `--epochs N` / `--images-per-epoch N` / `--pairs-per-image N` / `--lr F`
+Training loop knobs (`--mode train` only). Training is self-supervised on
+synthetic copy-move pairs (a real patch pasted into a new location of the
+same image) — CoMoFoD's masks carry no patch-level correspondence, so this
+augmentation is what makes training possible at all.
 
-#### `--start-idx N` (default: 0)
-Skip first N images (useful for resuming after interruption)
-```bash
---start-idx 0       # Start from first image
---start-idx 10      # Skip first 10, start from image 11
---start-idx 50      # Resume from image 50
-```
+#### `--train-rotations`
+Off by default. Includes 90/180/270-rotated positives in synthetic training
+pairs. Leave this off unless you've also added rotation handling to the
+offset register — the circuit is translation-only, so rotated positives are
+targets it provably cannot represent, and including them pins training loss
+above the constant-predictor floor instead of converging.
 
-#### `--seed N` (default: 42)
-Random seed for reproducibility
-```bash
---seed 42           # Same results each time
---seed 123          # Different random initialization
-```
+#### `--sim-threshold F` (default: 0.8, test mode only)
+Circuit output above which a pair counts as a match.
+
+#### `--num-images N`, `--output-dir PATH`, `--seed N`, `--checkpoint-dir PATH`
+Same meaning as any CLI tool: how many images to evaluate, where to write
+results/checkpoints, and the RNG seed.
 
 ---
 
 ## Configuration Examples
 
-### Quick Prototype (3 images, 15 mins)
+### Quick evaluation (5 images)
 ```bash
-python code/cmfd_comofod_pipeline.py \
+python code/cmfd_swaptest_pipeline.py --mode test \
     --dataset-dir ./data/comofod \
-    --num-images 3 \
-    --stride 8 \
-    --n-qubits 4 \
-    --n-layers 1 \
-    --output-dir ./results_prototype
+    --checkpoint ./checkpoints_pure/swaptest_qnn_epoch10.npz \
+    --num-images 5 --output-dir ./results_pure
 ```
 
-### Standard Testing (10 images, 50 mins)
+### Train from scratch
 ```bash
-python code/cmfd_comofod_pipeline.py \
+python code/cmfd_swaptest_pipeline.py --mode train \
     --dataset-dir ./data/comofod \
-    --num-images 10 \
-    --stride 4 \
-    --n-qubits 5 \
-    --n-layers 2 \
-    --output-dir ./results_standard
+    --epochs 10 --images-per-epoch 20 --pairs-per-image 12 --lr 0.05 \
+    --checkpoint-dir ./checkpoints_pure
 ```
 
-### Publication-Quality (50 images, 5 hours)
+### Train/test split (held-out scenes, deployable checkpoint for the demo)
 ```bash
-python code/cmfd_comofod_pipeline.py \
-    --dataset-dir ./data/comofod \
-    --num-images 50 \
-    --stride 2 \
-    --n-qubits 6 \
-    --n-layers 3 \
-    --output-dir ./results_publication
+python code/train_split.py --dataset-dir ./data/comofod \
+    --test-frac 0.2 --epochs 10 --images-per-epoch 80 \
+    --patch-size 8 --n-layers 3 \
+    --out ./models/cmfd_model.npz
 ```
 
-### Robustness Test (Test all transformations)
+### Evaluate on GRIP or COVERAGE instead of CoMoFoD
 ```bash
-python code/cmfd_comofod_pipeline.py \
-    --dataset-dir ./data/comofod \
-    --num-images 100 \
-    --stride 4 \
-    --n-qubits 5 \
-    --output-dir ./results_robustness
+python code/test_grip.py \
+    --dataset-dir ./data/grip \
+    --checkpoint ./checkpoints_pure/swaptest_qnn_epoch10.npz \
+    --patch-size 8 --n-layers 3 \
+    --num-images 20 --output-dir ./results_grip
 ```
-
-### Resume After Interrupt
-```bash
-# If interrupted at image 25, resume from 25
-python code/cmfd_comofod_pipeline.py \
-    --dataset-dir ./data/comofod \
-    --num-images 50 \
-    --start-idx 25 \
-    --output-dir ./results_continued
-```
-
-### Batch Processing (Multiple runs)
-```bash
-# Batch 1: Images 0-9
-python code/cmfd_comofod_pipeline.py \
-    --dataset-dir ./data/comofod \
-    --num-images 10 \
-    --start-idx 0 \
-    --output-dir ./results_batch_1 &
-
-# Batch 2: Images 10-19 (parallel)
-python code/cmfd_comofod_pipeline.py \
-    --dataset-dir ./data/comofod \
-    --num-images 10 \
-    --start-idx 10 \
-    --output-dir ./results_batch_2 &
-
-# Wait for both to finish
-wait
-
-# Combine results
-cat results_batch_1/results.csv > all_results.csv
-tail -n +2 results_batch_2/results.csv >> all_results.csv
-```
-
----
-
-## Speed vs Accuracy Trade-offs
-
-### Fastest (1 min/image)
-```bash
---stride 8 --n-qubits 4 --n-layers 1
-```
-Use when: Prototyping, testing code changes, quick evaluation
-
-### Balanced (5 min/image) ← RECOMMENDED
-```bash
---stride 4 --n-qubits 5 --n-layers 2
-```
-Use when: Standard testing, good quality results needed
-
-### Most Accurate (15 min/image)
-```bash
---stride 2 --n-qubits 6 --n-layers 3
-```
-Use when: Publication quality, final evaluation needed
 
 ---
 
 ## Analyzing Results
 
-### View CSV Results
 ```bash
-# Linux/Mac
-cat results/results.csv
+# View metrics
+cat results_pure/results_pure.csv
 
-# Windows
-type results\results.csv
-```
-
-### Statistical Summary
-```bash
+# Statistical summary
 python -c "
 import pandas as pd
-df = pd.read_csv('results/results.csv')
-print('Overall Statistics:')
+df = pd.read_csv('results_pure/results_pure.csv')
 print(df[['f1', 'iou', 'accuracy', 'precision', 'recall']].describe())
-print('\nBy Transformation:')
 print(df.groupby('transformation')[['f1', 'iou']].mean())
 "
-```
-
-### List Visualizations
-```bash
-# Count PNGs
-ls results/*.png | wc -l
-
-# View with image viewer (Linux/Mac)
-open results/          # macOS
-xdg-open results/      # Linux
-
-# View with image viewer (Windows)
-start results\
 ```
 
 ---
 
 ## Common Issues & Solutions
 
-### Issue: "ModuleNotFoundError"
+### "ModuleNotFoundError"
 ```bash
 pip install -r requirements.txt
 ```
 
-### Issue: "Takes 30+ mins per image"
-Your QNN config is too large. Try:
+### "v2 (hybrid) checkpoint" error on `--mode test`
+You pointed `--checkpoint` at an old `.npy` file. v3's circuit shape
+(amplitude-encoded raw pixels + offset register) is different — retrain with
+`--mode train` to get a `.npz` checkpoint.
+
+### "Takes 20+ minutes per image"
+Expected at default settings — this is the honest cost of exhaustive
+circuit-scored pair matching with no classical prefilter. Lower `--img-size`
+(e.g. 96) if you need faster iteration, at the cost of localization precision.
+
+### "Out of memory"
 ```bash
---stride 8 --n-qubits 4 --n-layers 1
+--num-images 3
 ```
 
-### Issue: "Out of memory"
-Reduce number of images:
-```bash
---num-images 3 --stride 8
-```
-
-### Issue: "Different results each run"
-Use fixed seed:
+### "Different results each run"
 ```bash
 --seed 42
 ```
 
-### Issue: "Want to use GPU"
-Install GPU backend:
+### "Want to use GPU"
 ```bash
 pip install pennylane-lightning-gpu
 ```
@@ -263,33 +194,20 @@ pip install pennylane-lightning-gpu
 
 ## Output Files Explained
 
-### results.csv
-CSV with columns:
-- `image_name` - Filename
-- `transformation` - Type (Blur, Rotation, etc.)
-- `precision` - TP / (TP + FP)
-- `recall` - TP / (TP + FN)
-- `f1` - Harmonic mean of precision/recall
-- `iou` - Intersection over Union
-- `accuracy` - (TP + TN) / total
-- `tp`, `fp`, `fn`, `tn` - Confusion matrix
+### results_pure.csv
+- `image_name`, `transformation` — which image and post-processing type
+- `precision`, `recall`, `f1`, `iou`, `accuracy` — standard segmentation metrics
+- `tp`, `fp`, `fn`, `tn` — confusion matrix counts
 
-### result_*.png
-5-panel visualization:
-1. Original forged image
-2. QNN heatmap (red = high confidence)
-3. Ground truth mask
-4. Predicted mask
-5. Metrics box
+### `*_pred_mask.npy`
+Binary predicted forgery mask at the working resolution, one per test image.
 
 ---
 
 ## Getting Help
 
 See:
-- **SETUP_GUIDE.md** - Installation troubleshooting
-- **COMOFOD_INFO.md** - Dataset structure details
-- **README.md** - Project overview
-- Code comments in `cmfd_comofod_pipeline.py`
-
-Good luck! 🚀
+- **SETUP_GUIDE.md** — Installation troubleshooting
+- **COMOFOD_INFO.md** — Dataset structure details
+- **README.md** — Project overview and the full "v3: PURE QNN" architecture writeup
+- Module docstrings in `cmfd_swaptest_pipeline.py`, `inference.py`, `sift_cmfd.py`
