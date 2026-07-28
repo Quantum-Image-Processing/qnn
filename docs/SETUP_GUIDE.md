@@ -149,7 +149,7 @@ python -c "import numpy; print(f'NumPy {numpy.__version__} OK')"
 python -c "from pathlib import Path; print('Dataset exists' if (Path('data/comofod/Forged').exists()) else 'Dataset NOT found')"
 
 # Test code
-python code/cmfd_comofod_pipeline.py --help
+python code/cmfd_swaptest_pipeline.py --help
 ```
 
 All should print "OK" or show help message.
@@ -174,20 +174,24 @@ All should print "OK" or show help message.
        "version": "0.2.0",
        "configurations": [
            {
-               "name": "Run CMFD Pipeline",
+               "name": "Run CMFD Pure-QNN Eval",
                "type": "python",
                "request": "launch",
-               "program": "${workspaceFolder}/code/cmfd_comofod_pipeline.py",
+               "program": "${workspaceFolder}/code/cmfd_swaptest_pipeline.py",
                "console": "integratedTerminal",
                "args": [
+                   "--mode", "test",
                    "--dataset-dir", "./data/comofod",
+                   "--checkpoint", "./checkpoints_pure/swaptest_qnn_epoch10.npz",
                    "--num-images", "5",
-                   "--output-dir", "./results"
+                   "--output-dir", "./results_pure"
                ]
            }
        ]
    }
    ```
+   To run the interactive demo instead, use an integrated terminal:
+   `cd code && streamlit run app.py`.
 
 4. **Use Claude Code (Cursor/VS Code):**
    - Select code snippets and ask questions
@@ -199,19 +203,27 @@ All should print "OK" or show help message.
 
 Once setup is complete:
 
-1. **Run quick test:**
+1. **Try the demo (no training needed — a checkpoint already ships):**
    ```bash
-   python code/cmfd_comofod_pipeline.py --dataset-dir ./data/comofod --num-images 5
+   cd code
+   streamlit run app.py
    ```
 
-2. **Check results:**
+2. **Or run a quick command-line evaluation:**
    ```bash
-   cat results/results.csv
-   ls results/*.png
+   python code/cmfd_swaptest_pipeline.py --mode test \
+       --dataset-dir ./data/comofod \
+       --checkpoint ./checkpoints_pure/swaptest_qnn_epoch10.npz \
+       --num-images 5 --output-dir ./results_pure
    ```
 
-3. **Adjust parameters:**
-   - Modify `--stride`, `--n-qubits` for speed/accuracy trade-off
+3. **Check results:**
+   ```bash
+   cat results_pure/results_pure.csv
+   ```
+
+4. **Adjust parameters:**
+   - Modify `--stride`, `--patch-size`, `--n-layers` for speed/accuracy trade-off
    - See USAGE_GUIDE.md for all options
 
 ---
@@ -220,7 +232,7 @@ Once setup is complete:
 
 - See **USAGE_GUIDE.md** for parameter explanations
 - See **COMOFOD_INFO.md** for dataset details
-- Check code comments in `cmfd_comofod_pipeline.py`
+- Check the module docstrings in `cmfd_swaptest_pipeline.py`, `inference.py`, and `sift_cmfd.py`
 - View error messages carefully (they often show the fix)
 
 Good luck! 🚀
