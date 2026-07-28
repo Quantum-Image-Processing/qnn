@@ -1,85 +1,74 @@
-# Quick Start - CoMoFoD CMFD Testing
+# Quick Start - CMFD Demo & Pure-QNN Pipeline
 
 ## 2-Minute Setup
 
 ```bash
-# 1. Extract ZIP and enter directory
-unzip cmfd_project.zip
+# 1. Enter the project directory
 cd cmfd_project
 
 # 2. Run setup (installs dependencies + downloads dataset)
 bash scripts/setup.sh
 
-# 3. Run quick test (5 images)
-python code/cmfd_comofod_pipeline.py --dataset-dir ./data/comofod --num-images 5
+# 3. Launch the demo (SIFT + pure-QNN engines, no training needed)
+cd code
+streamlit run app.py
+```
+A trained checkpoint already ships at `checkpoints_pure/swaptest_qnn_epoch10.npz`,
+so the "Pure quantum" engine works immediately in the demo.
 
-# 4. Check results
-cat results/results.csv
-ls results/*.png
+---
+
+## Command-Line: Evaluate the Pure QNN on CoMoFoD
+
+```bash
+python code/cmfd_swaptest_pipeline.py --mode test \
+    --dataset-dir ./data/comofod \
+    --checkpoint ./checkpoints_pure/swaptest_qnn_epoch10.npz \
+    --num-images 5 --output-dir ./results_pure
+
+cat results_pure/results_pure.csv
+```
+
+Defaults are already the tiled config (`--img-size 128 --patch-size 8 --stride 8`).
+Expect **~20 minutes per image** — this is exhaustive circuit-scored pair matching,
+not a shortcut-able speed knob. See README.md's "v3: PURE QNN" section for the
+full cost table and why `--stride` must equal `--patch-size`.
+
+---
+
+## Command-Line: Train the Pure QNN
+
+```bash
+python code/cmfd_swaptest_pipeline.py --mode train \
+    --dataset-dir ./data/comofod \
+    --epochs 10 --images-per-epoch 20 --lr 0.05 \
+    --checkpoint-dir ./checkpoints_pure
+```
+
+Or use the train/test-split trainer, which holds out scene ids for evaluation
+and saves one deployable checkpoint:
+```bash
+python code/train_split.py --dataset-dir ./data/comofod \
+    --epochs 10 --images-per-epoch 80 --out ./models/cmfd_model.npz
 ```
 
 ---
 
-## Commands by Speed
-
-### FAST (3 images, 15 mins)
-```bash
-python code/cmfd_comofod_pipeline.py \
-    --dataset-dir ./data/comofod \
-    --num-images 3 \
-    --stride 8 \
-    --n-qubits 4 \
-    --output-dir ./results_fast
-```
-
-### BALANCED (10 images, 50 mins)
-```bash
-python code/cmfd_comofod_pipeline.py \
-    --dataset-dir ./data/comofod \
-    --num-images 10 \
-    --stride 4 \
-    --n-qubits 5 \
-    --output-dir ./results
-```
-
-### HIGH-QUALITY (20 images, 3 hours)
-```bash
-python code/cmfd_comofod_pipeline.py \
-    --dataset-dir ./data/comofod \
-    --num-images 20 \
-    --stride 2 \
-    --n-qubits 6 \
-    --output-dir ./results_hq
-```
-
----
-
-## View Results
-
-```bash
-# See metrics
-cat results/results.csv
-
-# List visualizations
-ls -lh results/*.png
-
-# Quick stats (if pandas available)
-python -c "import pandas as pd; df = pd.read_csv('results/results.csv'); print(df[['f1', 'iou', 'accuracy']].describe())"
-```
-
----
-
-## Parameters Explained
+## Parameters Explained (cmfd_swaptest_pipeline.py)
 
 | Parameter | What It Does |
 |---|---|
-| `--dataset-dir` | Path to CoMoFoD folder (with Forged/ and Masks/) |
+| `--mode` | `train` or `test` (required) |
+| `--dataset-dir` | Path to CoMoFoD folder (legacy `Forged/`+`Masks/` or flat `CoMoFoD_small_v2/`) |
+| `--checkpoint` | Path to a `.npz` weights file (required for `--mode test`) |
+| `--patch-size` | Powers of two only; qubits/register = log2(patch_size²). 8→6q, 16→8q (~23x slower) |
+| `--img-size` | Working resolution (default 128, so full tiling stays affordable) |
+| `--stride` | Must equal `--patch-size` for full coverage — see README for why |
+| `--n-layers` | Data re-uploading blocks (circuit depth) |
+| `--epochs` / `--images-per-epoch` / `--pairs-per-image` / `--lr` | Training loop knobs |
+| `--sim-threshold` | Circuit output above which a pair counts as a match |
 | `--num-images` | How many images to test |
-| `--stride` | Patch step size (4=balanced, 8=fast, 2=slow) |
-| `--n-qubits` | Quantum circuit size (4-6 recommended) |
-| `--n-layers` | Circuit depth (1-3 layers) |
 | `--output-dir` | Where to save results |
-| `--start-idx` | Skip first N images (for resuming) |
 
 ---
 
@@ -87,16 +76,22 @@ python -c "import pandas as pd; df = pd.read_csv('results/results.csv'); print(d
 
 ```
 cmfd_project/
-├── README.md              (Full guide)
-├── QUICKSTART.txt         (This file)
-├── requirements.txt       (Dependencies)
+├── README.md                      (Full guide)
+├── QUICKSTART.txt                 (This file)
+├── requirements.txt               (Dependencies)
 ├── code/
-│   └── cmfd_comofod_pipeline.py    (Main code)
+│   ├── app.py                     (Streamlit demo — SIFT + pure-QNN)
+│   ├── cmfd_swaptest_pipeline.py  (Pure QNN: model, train, test)
+│   ├── inference.py               (Pure-QNN inference wrapper for the demo)
+│   ├── sift_cmfd.py               (Classical SIFT+RANSAC baseline)
+│   ├── train_split.py             (Train/test-split trainer)
+│   └── test_grip.py               (Evaluate on GRIP/COVERAGE datasets)
+├── checkpoints_pure/              (Trained QNN weights, .npz per epoch)
 ├── scripts/
-│   └── setup.sh          (Auto setup)
+│   └── setup.sh                   (Auto setup)
 ├── data/
-│   └── comofod/          (Dataset - after download)
-└── results/              (Your results)
+│   └── comofod/                   (Dataset - after download)
+└── results_pure/                  (Your results)
 ```
 
 ---
@@ -106,18 +101,10 @@ cmfd_project/
 | Issue | Fix |
 |---|---|
 | "Command not found: python" | Use `python3` instead |
-| "pennylane not found" | Run: `pip install -r requirements.txt` |
+| "pennylane" / "streamlit" / "cv2" not found | Run: `pip install -r requirements.txt` |
 | "Could not find CoMoFoD" | Run: `bash scripts/setup.sh` to download |
-| "Very slow" | Use `--stride 8 --n-qubits 4` |
-| "Out of memory" | Use `--num-images 3` |
+| Very slow QNN eval | Expected (~20 min/image at defaults); try a smaller `--img-size` |
+| "v2 (hybrid) checkpoint" error | Old `.npy` weights aren't compatible with v3 — retrain with `--mode train` |
+| Out of memory | Use `--num-images 3` |
 
----
-
-## Next Steps
-
-1. Run: `python code/cmfd_comofod_pipeline.py --dataset-dir ./data/comofod --num-images 5`
-2. Wait 20-30 minutes
-3. Check: `results/results.csv` for metrics
-4. View: `results/*.png` for visualizations
-
-That's it! Good luck! 🚀
+That's it! Good luck!
