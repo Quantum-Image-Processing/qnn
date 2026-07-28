@@ -17,7 +17,7 @@ from cmfd_swaptest_pipeline import (
     CoMoFoDDataset, SwapTestSiameseQNN, detect_copy_move, compute_metrics
 )
 
-CHECKPOINT = 'checkpoints_full/swaptest_qnn_epoch10.npy'
+CHECKPOINT = 'checkpoints_pure/swaptest_qnn_epoch10.npz'
 OUTPUT_DIR = Path('results_v2_step2')
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -41,7 +41,7 @@ targets = [
 
 name_to_path = {p.stem: p for p in ds.image_files}
 
-qnn = SwapTestSiameseQNN(n_qubits=4, n_layers=2)
+qnn = SwapTestSiameseQNN(patch_size=8, n_layers=3)
 qnn.load(CHECKPOINT)
 print(f"[INFO] Loaded {CHECKPOINT}")
 
@@ -57,10 +57,11 @@ for name, label in targets:
         continue
 
     print(f"\n--- {img_name} ({label}) ---")
+    # v3: stride 16 rather than 8 - pair scoring is exhaustive now, and
+    # stride 8 would mean ~520k circuit evaluations per image.
     pred_mask, matched_pairs, coords = detect_copy_move(
-        img, qnn, patch_size=32, stride=8,
-        block_window=12, sim_threshold=0.8,
-        offset_bin=4, min_offset_votes=3, verbose=False,
+        img, qnn, patch_size=8, stride=16,
+        sim_threshold=0.8, verbose=False,
     )
     m = compute_metrics(pred_mask, gt_mask)
     geom = CoMoFoDDataset.get_geometry_type(img_name)

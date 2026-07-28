@@ -5,11 +5,17 @@ Upload a .jpg / .jpeg / .png image, run a copy-move forgery detector, and get:
 FORGED / AUTHENTIC verdict + a forgery heatmap + bounding boxes marking where
 the image was copy-move forged.
 
-Two engines:
-  * SIFT + RANSAC (default) - fast, robust classical keypoint matching with
-    geometric + compactness verification. Best for distinct copied objects.
-  * Swap-test QNN - the quantum model. Kept for the quantum component of the
-    project; over-detects, so treated as experimental.
+Two engines, no tuning knobs - the sidebar offers exactly one choice:
+  * Pure classical - SIFT + RANSAC keypoint matching with geometric +
+    compactness verification. Fast, and the one that actually works.
+  * Pure quantum - the v3 Siamese swap-test QNN. Genuinely quantum end to
+    end: amplitude-encoded raw pixels, exhaustive circuit-scored pairs, an
+    in-circuit offset register, and no classical feature/prefilter/vote/
+    morphology stage anywhere. Slower and less accurate than SIFT; that is
+    the honest cost of removing the classical scaffolding.
+
+Every threshold is pinned in SIFT_CFG / QNN_CFG below at the values the
+Phase-2 evaluation used, so the two methods are compared as whole methods.
 
 Run:
     cd code
@@ -26,7 +32,19 @@ from sift_cmfd import SiftForgeryDetector       # noqa: E402
 from inference import ForgeryDetector           # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CKPT = ROOT / "checkpoints_full" / "swaptest_qnn_epoch10.npy"
+# v3 (pure QNN) checkpoints are .npz - v2's .npy weights are a different
+# circuit shape and are deliberately rejected by SwapTestSiameseQNN.load().
+DEFAULT_CKPT = ROOT / "checkpoints_pure" / "swaptest_qnn_epoch10.npz"
+
+# Fixed operating points — the settings the Phase-2 results were produced with.
+SIFT_CFG = dict(work_long_side=1000, ratio=0.5, ransac_thresh=6.0, min_cluster=12)
+# stride == patch_size so patches TILE. A larger stride leaves the image
+# partly unexamined: at 256px/stride 16 a forged image and its authentic
+# original returned identical results because the forged region was never
+# sampled. img_size 128 keeps tiled scoring (~33k pairs, ~20 min/image)
+# affordable; drop to 96 for ~6 min if the demo wait is too long.
+QNN_CFG = dict(n_layers=3, img_size=128, patch_size=8, stride=8,
+               sim_threshold=0.90, decision_pairs=8)
 
 st.set_page_config(page_title="Copy-Move Forgery Detector", page_icon="🔍", layout="wide")
 
@@ -37,41 +55,35 @@ def get_sift(work_long_side: int):
 
 
 @st.cache_resource(show_spinner=False)
-def get_qnn(ckpt, n_qubits, n_layers, img_size, stride):
-    return ForgeryDetector(ckpt, n_qubits=n_qubits, n_layers=n_layers,
-                           img_size=img_size, patch_size=32, stride=stride)
+def get_qnn(ckpt, n_layers, img_size, patch_size, stride):
+    return ForgeryDetector(ckpt, n_layers=n_layers, img_size=img_size,
+                           patch_size=patch_size, stride=stride)
 
 
 # ----------------------------- sidebar -------------------------------------
-st.sidebar.title("⚙️ Settings")
-engine = st.sidebar.radio("Detection engine",
-                          ["SIFT + RANSAC  (fast, recommended)", "Swap-test QNN  (quantum, slow)"])
-use_sift = engine.startswith("SIFT")
+# Only the engine choice is exposed. Every knob below is fixed at the value
+# the Phase-2 evaluation was run with, so the two engines are compared as
+# whole methods rather than as two piles of sliders.
+CLASSICAL = "Pure classical  ·  SIFT + RANSAC"
+QUANTUM = "Pure quantum  ·  swap-test QNN"
 
-if use_sift:
-    st.sidebar.markdown("**SIFT + RANSAC**")
-    work_side = st.sidebar.select_slider("Working resolution (long side)",
-                                         [512, 768, 1000, 1400], value=1000)
-    ratio = st.sidebar.slider("g2NN match ratio", 0.3, 0.8, 0.5, 0.05)
-    ransac_thresh = st.sidebar.slider("RANSAC tolerance (px)", 2.0, 12.0, 6.0, 0.5)
-    min_cluster = st.sidebar.slider("Decision: min compact-cluster size", 4, 60, 12)
-    st.sidebar.caption("Higher cluster size → fewer detections. Repetitive "
-                       "facades (regular windows) can still cause false "
-                       "positives — a known hard case for all methods.")
-else:
-    st.sidebar.markdown("**Swap-test QNN** (must match the checkpoint)")
-    ckpt = st.sidebar.text_input("Checkpoint (.npy)", value=str(DEFAULT_CKPT))
-    n_qubits = st.sidebar.number_input("Qubits per register", 2, 6, 4)
-    n_layers = st.sidebar.number_input("Layers", 1, 4, 2)
-    img_size = st.sidebar.select_slider("Working resolution", [128, 192, 256], value=256)
-    stride = st.sidebar.select_slider("Patch stride", [8, 12, 16, 24], value=16)
-    sim_threshold = st.sidebar.slider("Similarity threshold", 0.50, 0.99, 0.90, 0.01)
-    min_offset_votes = st.sidebar.slider("Min offset votes", 1, 15, 6)
-    decision_votes = st.sidebar.slider("Decision: forged if peak ≥", 1, 40, 8)
+st.sidebar.title("⚙️ Engine")
+engine = st.sidebar.radio("Detection method", [CLASSICAL, QUANTUM], label_visibility="collapsed")
+use_sift = engine == CLASSICAL
 
 # ----------------------------- main ----------------------------------------
 st.title("🔍 Copy-Move Forgery Detection")
 st.caption("Upload an image to check whether a region was duplicated, and where.")
+
+if not use_sift:
+    st.warning(
+        "**Experimental — pure-QNN mode (v3).** Every classical detection stage has "
+        "been removed, including the offset-consistency vote that previously "
+        "suppressed false matches on homogeneous regions (sky, walls), so expect "
+        "more over-detection than the SIFT engine and than the earlier hybrid. "
+        "Scoring is exhaustive over patch pairs and runs one circuit per pair: "
+        "**expect roughly 20 minutes per image**, not seconds. Treat this as a "
+        "demonstration of a fully quantum detector, not as a production detector.")
 
 up = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png"])
 run = st.button("▶ Run analysis", type="primary", disabled=up is None)
@@ -83,20 +95,22 @@ if run and up is not None:
     bar = st.progress(0.0, text="Analyzing…")
     try:
         if use_sift:
-            det = get_sift(int(work_side))
-            result = det.analyze(image, ratio=ratio, ransac_thresh=ransac_thresh,
-                                 min_cluster=int(min_cluster),
+            det = get_sift(SIFT_CFG["work_long_side"])
+            result = det.analyze(image, ratio=SIFT_CFG["ratio"],
+                                 ransac_thresh=SIFT_CFG["ransac_thresh"],
+                                 min_cluster=SIFT_CFG["min_cluster"],
                                  progress=lambda f: bar.progress(min(f, 1.0), text="SIFT matching…"))
             signal_label = "Compact cluster"
         else:
-            if not Path(ckpt).exists():
-                st.error(f"Checkpoint not found: {ckpt}"); st.stop()
-            det = get_qnn(ckpt, int(n_qubits), int(n_layers), int(img_size), int(stride))
-            result = det.analyze(image, sim_threshold=sim_threshold,
-                                 min_offset_votes=int(min_offset_votes),
-                                 decision_votes=int(decision_votes),
-                                 progress=lambda f: bar.progress(min(f, 1.0), text="QNN scoring…"))
-            signal_label = "Peak offset votes"
+            if not DEFAULT_CKPT.exists():
+                st.error(f"Checkpoint not found: {DEFAULT_CKPT}"); st.stop()
+            det = get_qnn(str(DEFAULT_CKPT), QNN_CFG["n_layers"], QNN_CFG["img_size"],
+                          QNN_CFG["patch_size"], QNN_CFG["stride"])
+            result = det.analyze(image, sim_threshold=QNN_CFG["sim_threshold"],
+                                 decision_pairs=QNN_CFG["decision_pairs"],
+                                 progress=lambda f: bar.progress(min(f, 1.0),
+                                                                 text="Quantum pair scoring…"))
+            signal_label = "Matched pairs"
     except Exception as e:
         bar.empty(); st.error(f"Analysis failed: {e}"); st.stop()
     bar.empty()
@@ -107,8 +121,10 @@ if run and up is not None:
         st.success(f"### ✅ AUTHENTIC  ·  confidence {(1 - result.confidence):.0%}")
 
     m1, m2, m3 = st.columns(3)
-    m1.metric(signal_label, result.peak_votes)
-    m2.metric("Keypoint/patch matches", result.n_matched_pairs)
+    m1.metric(signal_label,
+              result.peak_votes if use_sift else result.n_matched_pairs)
+    m2.metric("Keypoint/patch matches" if use_sift else "Mean pair score",
+              result.n_matched_pairs if use_sift else f"{result.mean_similarity:.3f}")
     m3.metric("Forged regions (boxes)", len(result.boxes))
 
     st.markdown("---")
@@ -118,8 +134,12 @@ if run and up is not None:
     c3.markdown("**Localized regions / matches**"); c3.image(result.box_overlay, use_container_width=True)
 
     if result.is_forged and result.boxes:
-        st.markdown(f"**Detected region(s):** {result.boxes}  ·  "
-                    f"dominant shift (dy, dx) = {result.dominant_offset}")
+        detail = f"**Detected region(s):** {result.boxes}"
+        if use_sift:
+            detail += f"  ·  dominant shift (dy, dx) = {result.dominant_offset}"
+        else:
+            detail += f"  ·  peak pair score = {result.max_similarity:.3f}"
+        st.markdown(detail)
 
     with st.expander("What am I looking at?"):
         st.markdown(

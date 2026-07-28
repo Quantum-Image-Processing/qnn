@@ -10,7 +10,7 @@ out and written to models/split.json so evaluation never touches them.
 Example (train on the full training split):
     cd code
     python train_split.py --dataset-dir ../data/comofod \
-        --epochs 10 --images-per-epoch 80 --out ../models/cmfd_model.npy
+        --epochs 10 --images-per-epoch 80 --out ../models/cmfd_model.npz
 
 Then point the Streamlit app's checkpoint at ../models/cmfd_model.npy.
 
@@ -37,15 +37,24 @@ def main():
     ap = argparse.ArgumentParser(description="Train/test split trainer for CMFD QNN")
     ap.add_argument('--dataset-dir', required=True)
     ap.add_argument('--test-frac', type=float, default=0.2)
-    ap.add_argument('--n-qubits', type=int, default=4)
-    ap.add_argument('--n-layers', type=int, default=2)
+    # v3 (pure QNN): qubits per register are derived from --patch-size, so
+    # there is no --n-qubits any more.
+    ap.add_argument('--n-layers', type=int, default=3)
+    ap.add_argument('--n-offset-qubits', type=int, default=2)
+    ap.add_argument('--train-rotations', action='store_true',
+                    help='Include rotated positives. Off by default - the '
+                         'circuit is translation-only and rotated targets '
+                         'hold loss above the constant-predictor floor.')
     ap.add_argument('--epochs', type=int, default=10)
     ap.add_argument('--images-per-epoch', type=int, default=80)
     ap.add_argument('--pairs-per-image', type=int, default=12)
-    ap.add_argument('--patch-size', type=int, default=32)
+    ap.add_argument('--patch-size', type=int, default=8,
+                    help='Powers of two. Sets qubits per register to '
+                         'log2(patch_size^2): 8->6q (15 wires), 16->8q (19 wires, '
+                         '~23x slower per pair).')
     ap.add_argument('--lr', type=float, default=0.1)
     ap.add_argument('--seed', type=int, default=42)
-    ap.add_argument('--out', default='../models/cmfd_model.npy')
+    ap.add_argument('--out', default='../models/cmfd_model.npz')
     ap.add_argument('--checkpoint-dir', default='../models/checkpoints')
     args = ap.parse_args()
 
@@ -74,13 +83,16 @@ def main():
                    'seed': args.seed, 'test_frac': args.test_frac}, f, indent=2)
     print(f"[SPLIT] wrote {out.parent/'split.json'}")
 
-    qnn = SwapTestSiameseQNN(n_qubits=args.n_qubits, n_layers=args.n_layers)
-    print(f"[INFO] training {np.prod(qnn.weights.shape)} params, "
+    qnn = SwapTestSiameseQNN(patch_size=args.patch_size, n_layers=args.n_layers,
+                             n_offset_qubits=args.n_offset_qubits)
+    n_params = int(np.prod(qnn.weights.shape) + np.prod(qnn.offset_weights.shape))
+    print(f"[INFO] training {n_params} params, "
           f"{qnn.n_wires} wires, {args.epochs} epochs")
 
     train(qnn, ds, epochs=args.epochs, images_per_epoch=args.images_per_epoch,
           pairs_per_image=args.pairs_per_image, patch_size=args.patch_size,
-          lr=args.lr, checkpoint_dir=args.checkpoint_dir, seed=args.seed)
+          lr=args.lr, checkpoint_dir=args.checkpoint_dir, seed=args.seed,
+          rotate=args.train_rotations)
 
     qnn.save(out)
     print(f"[DONE] saved deployable model -> {out}")

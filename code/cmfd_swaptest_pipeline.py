@@ -1,75 +1,96 @@
 """
-CMFD Pipeline v2 - Siamese Swap-Test QNN for TRUE Copy-Move Detection
+CMFD Pipeline v3 - PURE Siamese Swap-Test QNN for Copy-Move Detection
 =======================================================================
-This replaces the single-patch artifact classifier with a pairwise
-matching architecture, which is what copy-move forgery detection
-actually requires.
+v3 removes every hand-engineered classical stage from the v2 hybrid so
+that the detector is quantum end-to-end: raw pixels go into the circuit
+and a measured expectation value comes out. Nothing is learned or
+decided classically.
 
-Key differences from the v1 (single-patch) pipeline:
-  - v1: score(patch) -> forged probability   [structurally can't localize
-        copy-move pairs at all - a per-patch classifier has no notion of
-        "this patch was duplicated to that patch", regardless of which
-        post-processing category (BC/CA/CR/IB/JC/NA) is applied]
-  - v2: similarity(patch_i, patch_j) -> match probability, then
-        spatial offset-consistency filtering to keep only genuine
-        copy-move pairs and reject coincidental look-alikes
-        (e.g. sky, walls, other homogeneous regions).
+What changed from v2 (the hybrid), and why
+------------------------------------------
+  - v2 fed the circuit a DCT + intensity-histogram descriptor. That is
+    classical feature engineering and was the single biggest reason v2
+    could not be called a quantum model: the circuit only ever saw
+    24 numbers a classical algorithm had already decided were the
+    interesting ones. v3 amplitude-encodes the RAW patch pixels.
+  - v2 pre-filtered candidate pairs with Fridrich-style lexicographic
+    block matching (a classical O(N log N) sort). v3 scores every
+    admissible pair with the circuit. The quantum analogue of the
+    prefilter is Grover/amplitude amplification over a pair-index
+    register, which needs QRAM to load all patches in superposition -
+    not simulable here, so it is documented as future work rather than
+    faked. The honest cost of dropping it is O(N^2) circuit calls,
+    which is why the default stride is coarser than v2's.
+  - v2 decided which matches were real with a classical Hough-style
+    (dy, dx) histogram vote. v3 encodes the pair's spatial offset into
+    a third quantum register and lets trainable controlled rotations
+    fold it into the ancilla readout (see the limitation below).
+  - v2 cleaned its output mask with binary dilation/erosion. v3 does
+    not: morphology is a classical CV operator.
 
 Architecture
 ------------
-1. Feature extraction: same DCT + histogram descriptor as v1 (kept
-   identical on purpose, per your request), one vector per patch.
-2. Candidate pair generation: O(N log N) lexicographic block matching
-   (Fridrich-style: sort patches by feature vector, only compare
-   patches within a sliding window of the sorted order) instead of
-   brute-force O(N^2) all-pairs comparison.
-3. Siamese swap-test QNN: both patches in a candidate pair are encoded
-   into two separate quantum registers via a data re-uploading ansatz
-   (weights and each register's OWN classical features are combined
-   additively inside the same rotation gates at every layer, using the
-   SAME/tied weight tensor for both registers), then a swap test
-   against an ancilla qubit is performed. The ancilla's <Z> expectation
-   value equals the squared overlap |<psi_a|psi_b>|^2 of the two
-   encoded states -> a learned similarity score in [0, 1]. This is the
-   natural quantum analogue of a Siamese network's shared-weight
-   distance metric. (An earlier fixed-embedding-then-tied-unitary
-   version of this - AmplitudeEmbedding(data) followed by a
-   data-independent U(w) - was provably degenerate: for a swap test,
-   |<U(w)f_a|U(w)f_b>|^2 = |<f_a|f_b>|^2 for ANY U(w), so gradients
-   w.r.t. w were exactly zero everywhere. Confirmed empirically before
-   being replaced with the re-uploading form below - see
-   SwapTestSiameseQNN's docstring.)
-4. Training: uses PennyLane's parameter-shift differentiation
-   (unchanged from v1) with contrastive-style MSE loss on similarity
-   labels, batched per-image, iterated over epochs (same
-   image-level batching pattern as v1's per-image processing loop).
-   Ground-truth patch CORRESPONDENCE (which patch copied to where)
-   does not exist in CoMoFoD masks, so training pairs are built with
-   self-supervised synthetic copy-move augmentation: an authentic
-   patch is duplicated to a new location (optionally rotated in
-   {0,90,180,270}) -> exact positive pair by construction. Negative
-   pairs are random non-matching patch locations.
-5. Inference / localization: candidate pairs from a real forged
-   test image are scored, thresholded, then filtered by spatial
-   offset-consistency (a histogram vote over (dx, dy) offsets, kept
-   from classical block-matching CMFD literature) to suppress
-   isolated false matches. Surviving pairs mark BOTH the source and
-   the target region in the output mask.
+1. Patch preparation: a raw patch is flattened and L2-normalized. That
+   is state preparation, not feature extraction - no basis transform,
+   no descriptor, no learned or hand-chosen projection.
+2. Pair generation: all patch pairs at least `min_spatial_dist` apart.
+3. Pure quantum scoring, one circuit per pair:
+     - AmplitudeEmbedding loads all patch_size^2 pixels of patch A into
+       register A and patch B into register B (needs exactly
+       n_qubits = log2(patch_size^2) wires per register).
+     - `n_layers` data re-uploading blocks apply RX/RY/RZ with angles
+       `weight + pixel*pi` plus a CNOT ring, using the SAME (tied)
+       weight tensor for both registers - the quantum analogue of a
+       Siamese network's shared-weight distance metric.
+     - The pair's (dy, dx) offset is angle-encoded into a small offset
+       register with its own trainable rotations.
+     - Swap test: H(ancilla) -> CSWAP(ancilla, a_k, b_k) for all k ->
+       trainable CRY from each offset wire onto the ancilla -> H.
+     - Readout is <Z> on the ancilla, clipped to [0, 1].
+   IMPORTANT (why re-uploading is mandatory here): a plain
+   AmplitudeEmbedding followed by a data-INDEPENDENT tied unitary U(w)
+   is provably degenerate under a swap test -
+   |<U(w)f_a|U(w)f_b>|^2 = |<f_a|f_b>|^2 for ANY U(w) - so the loss
+   gradient w.r.t. w is exactly zero everywhere (confirmed empirically
+   in v2 at n_qubits in {2,3,4}: grad norm ~1e-16, similarity
+   bit-identical across independent random weight draws). Re-uploading
+   the pixels INSIDE the rotation angles makes each register's unitary
+   data-dependent, so there is no shared U(w) left to cancel. Keep this
+   in mind before "simplifying" the ansatz - see SwapTestSiameseQNN.
+4. Training: MSE on similarity labels over self-supervised synthetic
+   copy-move pairs (an authentic patch duplicated to a new location,
+   optionally rotated in {0,90,180,270} -> exact positive by
+   construction; random non-matching locations -> negatives). CoMoFoD
+   masks carry no patch CORRESPONDENCE, so supervised pair labels do
+   not exist and this augmentation is what makes training possible.
+   The ONLY trainable parameters are circuit rotation angles - there is
+   no classical trainable layer anywhere in the model.
+5. Inference: every pair is scored by the circuit, thresholded, and
+   surviving pairs paint BOTH the source and target region into the
+   mask. No vote, no morphology.
 
-Known limitations (carried over honestly, not glossed over):
-  - Offset-consistency filtering as implemented handles pure
-    translation only. Rotated copy-move forgeries need a rotation
-    parameter added to the offset vote (dx, dy, dtheta) - noted as a
-    TODO with a hook left in `find_dominant_offsets`. (NOTE: in the
-    real CoMoFoD dataset, "CR" denotes Color Reduction post-processing,
-    NOT rotation - rotated forgeries are identified by base scene id
-    range instead, see CoMoFoDDataset.get_geometry_type. BC/CA/CR/IB/
-    JC/NA are all post-processing categories applied independently of
-    which geometric transformation built the underlying forgery.)
-  - Blocking reduces but does not eliminate false candidate pairs on
-    homogeneous regions (sky, walls) - the offset-consistency step is
-    what actually suppresses those, not the QNN alone.
+Known limitations (stated plainly, not glossed over)
+----------------------------------------------------
+  - The offset register is a WEAKER substitute for v2's classical
+    vote, not an equivalent one. Offset consistency is a GLOBAL
+    property of the pair ensemble ("many pairs share one offset"); a
+    per-pair circuit cannot observe clustering it is not shown. A
+    faithful quantum version needs quantum counting / amplitude
+    estimation over all pairs at once, which again needs QRAM. Expect
+    lower precision than v2 on homogeneous regions (sky, walls) - that
+    is the real, measured price of purity, and the report should say
+    so rather than hide it.
+  - Offset handling is translation-only, as in v2. Rotated copy-move
+    needs a dtheta component. (NOTE: in CoMoFoD, "CR" is Color
+    Reduction post-processing, NOT rotation - rotated forgeries are
+    identified by base scene id range, see get_geometry_type. BC/CA/
+    CR/IB/JC/NA are post-processing categories applied independently
+    of the geometry used to build the forgery.)
+  - Dropping the classical prefilter makes inference O(N^2) in patch
+    count. Use a coarser --stride; see the cost table in main().
   - No accuracy guarantees; this is architecture, not a tuned model.
+    v3 is expected to score LOWER than the v2 hybrid. Purity is the
+    goal here, not the leaderboard.
 """
 
 import os
@@ -78,15 +99,11 @@ import json
 import argparse
 import numpy as np
 from pathlib import Path
-from collections import defaultdict
-from itertools import combinations
 
 import pennylane as qml
 from pennylane import numpy as pnp
 
 from PIL import Image
-from scipy.fftpack import dct
-from scipy.ndimage import binary_dilation, binary_erosion, label as cc_label
 
 try:
     from tqdm import tqdm
@@ -280,181 +297,320 @@ class CoMoFoDDataset:
 
 
 # ============================================================================
-# FEATURE EXTRACTION (identical to v1 - unchanged on purpose)
+# QUANTUM STATE PREPARATION (replaces v2's classical DCT + histogram
+# descriptor - see module docstring)
 # ============================================================================
 
-def extract_patch_features(patch: np.ndarray, target_dim: int = 24) -> np.ndarray:
-    dct2 = dct(dct(patch, axis=0), axis=1)
-    dct_flat = dct2.flatten()
+def qubits_for_patch(patch_size: int) -> int:
+    """
+    Wires needed per register to amplitude-encode a patch_size^2 patch.
+    Amplitude encoding packs 2^n real amplitudes into n qubits, so a
+    16x16 patch (256 px) needs exactly 8 qubits - the reason patch sizes
+    that are powers of two are strongly preferred here.
+    """
+    n_px = patch_size * patch_size
+    n_q = int(np.ceil(np.log2(n_px)))
+    return max(1, n_q)
 
-    if len(dct_flat) >= 12:
-        idx_sorted = np.argsort(np.abs(dct_flat))[-12:]
-        dct_feat = dct_flat[idx_sorted]
-    else:
-        dct_feat = np.pad(dct_flat, (0, 12 - len(dct_flat)), mode='constant')
 
-    hist, _ = np.histogram(patch, bins=12, range=(0, 1))
-    hist_feat = hist.astype(np.float32)
+def prepare_patch_state(patch: np.ndarray) -> np.ndarray:
+    """
+    Raw patch -> normalized amplitude vector, zero-padded to 2^n.
 
-    features = np.concatenate([dct_feat, hist_feat])
-    if len(features) < target_dim:
-        features = np.pad(features, (0, target_dim - len(features)), mode='constant')
-    elif len(features) > target_dim:
-        features = features[:target_dim]
+    This is STATE PREPARATION, not feature extraction: the pixels are
+    flattened and L2-normalized and nothing else. No basis transform, no
+    descriptor, no hand-chosen projection - that distinction is the whole
+    point of v3 (v2 fed the circuit DCT coefficients + a histogram here).
 
-    norm = np.linalg.norm(features)
-    if norm > 1e-6:
-        features = features / norm
-    return features
+    A flat/black patch has zero norm and cannot be normalized into a
+    quantum state, so it falls back to the uniform superposition, which
+    is the correct "no information" state for it.
+    """
+    flat = np.asarray(patch, dtype=np.float64).ravel()
+    dim = 2 ** qubits_for_patch(int(np.sqrt(len(flat))))
+    if len(flat) < dim:
+        flat = np.pad(flat, (0, dim - len(flat)), mode='constant')
+
+    norm = np.linalg.norm(flat)
+    if norm < 1e-9:
+        return np.full(dim, 1.0 / np.sqrt(dim))
+    return flat / norm
 
 
 def extract_all_patches(image: np.ndarray, patch_size: int, stride: int):
-    """Sliding window patch extraction - same windowing as v1's compute_heatmap."""
+    """
+    Sliding-window patch extraction. Returns (coords, states) where each
+    state is the amplitude vector fed straight to AmplitudeEmbedding.
+    Kept the same windowing as v2 so masks stay comparable.
+    """
     H, W = image.shape
-    coords, feats = [], []
+    coords, states = [], []
     for y in range(0, H - patch_size + 1, stride):
         for x in range(0, W - patch_size + 1, stride):
             patch = image[y:y + patch_size, x:x + patch_size]
             coords.append((y, x))
-            feats.append(extract_patch_features(patch))
-    return coords, np.array(feats, dtype=np.float32)
+            states.append(prepare_patch_state(patch))
+    return coords, np.array(states, dtype=np.float64)
 
 
 # ============================================================================
-# CANDIDATE PAIR GENERATION - O(N log N) lexicographic block matching
+# PAIR GENERATION - exhaustive (v2's classical prefilter removed)
 # ============================================================================
 
-def generate_candidate_pairs(coords, feats, window: int = 12, min_spatial_dist: int = 24):
+def generate_all_pairs(coords, min_spatial_dist: int = 24):
     """
-    Classical CMFD trick (Fridrich et al.) adapted as a pre-filter for the
-    QNN: sort patches by feature vector, only pair patches that land near
-    each other in sorted order. This turns O(N^2) all-pairs comparison
-    into O(N * window), which is what makes this tractable on 256x256
-    images with dense strides.
+    Every patch pair at least `min_spatial_dist` apart, scored by the
+    circuit. v2 pre-filtered these with a classical lexicographic sort
+    over DCT descriptors (Fridrich et al.); that is a classical matching
+    algorithm doing the detector's job before the circuit ever runs, so
+    v3 removes it.
 
-    min_spatial_dist discards trivially-adjacent pairs (a patch always
-    looks similar to its immediate neighbour; that's not a copy-move).
+    The quantum replacement would be Grover / amplitude amplification
+    over a pair-index register, giving back the O(sqrt(N)) advantage -
+    but that needs QRAM to hold all patches in superposition and is not
+    simulable at this scale, so it stays documented as future work
+    instead of being faked with a classical stand-in.
+
+    The honest consequence: this is O(N^2) circuit evaluations. Patch
+    count is set by --stride, so stride is now the main cost dial.
+
+    min_spatial_dist still drops trivially-adjacent pairs - a patch
+    always resembles its immediate neighbour and that is not a
+    copy-move. It is a geometric admissibility rule on coordinates, not
+    a similarity judgement, so it carries no classical matching signal.
     """
     n = len(coords)
-    if n == 0:
-        return []
-
-    # Lexicographic sort key: round to reduce noise sensitivity, then sort.
-    sort_key = np.lexsort(feats.round(3).T[::-1])
-    pairs = set()
-    for rank in range(n):
-        i = sort_key[rank]
-        for off in range(1, window + 1):
-            rank2 = rank + off
-            if rank2 >= n:
-                break
-            j = sort_key[rank2]
-            yi, xi = coords[i]
+    pairs = []
+    for i in range(n):
+        yi, xi = coords[i]
+        for j in range(i + 1, n):
             yj, xj = coords[j]
-            spatial_dist = np.hypot(yi - yj, xi - xj)
-            if spatial_dist < min_spatial_dist:
+            if np.hypot(yi - yj, xi - xj) < min_spatial_dist:
                 continue
-            pair = (min(i, j), max(i, j))
-            pairs.add(pair)
-    return list(pairs)
+            pairs.append((i, j))
+    return pairs
 
 
 # ============================================================================
 # SIAMESE SWAP-TEST QNN
 # ============================================================================
 
+def encode_offset(dy: float, dx: float, img_size: int) -> np.ndarray:
+    """
+    Pair spatial offset -> angles in [-1, 1] for the offset register.
+
+    Sign is folded away because a copy-move offset is symmetric: pair
+    (i, j) and (j, i) describe the same duplication event, so the circuit
+    must not learn to prefer one direction.
+    """
+    return np.array([abs(dy) / img_size, abs(dx) / img_size], dtype=np.float64)
+
+
 class SwapTestSiameseQNN:
     """
-    Shared-weight (tied) variational circuit applied to two quantum
-    registers, followed by a swap test. <Z> on the ancilla equals the
-    squared state overlap |<psi_a|psi_b>|^2 - a trainable similarity score.
+    Pure quantum pair scorer: two amplitude-encoded patch registers, a
+    tied re-uploading ansatz, a small offset register, and a swap-test
+    ancilla readout. Every trainable parameter in the model is a rotation
+    angle in this circuit - there is no classical trainable layer.
 
-    Embedding note (data re-uploading): an earlier version of this class
-    used a fixed AmplitudeEmbedding(data) followed by a data-INDEPENDENT
-    tied unitary U(w). That is provably degenerate for a swap-test readout:
-    |<U(w)f_a|U(w)f_b>|^2 = |<f_a|U(w)^dagger U(w)|f_b>|^2 = |<f_a|f_b>|^2
-    for ANY unitary U(w), so the swap test output (and therefore the loss
-    gradient w.r.t. w) is exactly constant in w - confirmed empirically
-    (grad norm ~1e-16 at n_qubits in {2,3,4}, similarity bit-identical
-    across independent random weight draws). Fixed via data re-uploading
-    (Perez-Salinas et al., "Data re-uploading for a universal quantum
-    classifier", 2020): weights and each register's OWN classical features
-    are combined additively INSIDE the same rotation gates at every layer,
-    so there is no data-independent U(w) shared between the two branches
-    for the swap test to cancel against - the weights remain tied (the
-    same weight tensor parametrizes both registers) but now have a
-    genuine, non-cancelling effect on the measured overlap.
+    WHY THE ANSATZ LOOKS LIKE THIS (do not "simplify" it away)
+    ----------------------------------------------------------
+    AmplitudeEmbedding followed by a data-INDEPENDENT tied unitary U(w)
+    is provably degenerate under a swap test:
+        |<U(w)f_a|U(w)f_b>|^2 = |<f_a|U(w)^dag U(w)|f_b>|^2 = |<f_a|f_b>|^2
+    for ANY unitary U(w). The output - and therefore the gradient w.r.t.
+    w - is exactly constant, confirmed empirically in v2 (grad norm
+    ~1e-16 at n_qubits in {2,3,4}, similarity bit-identical across
+    independent random weight draws). The fix, kept here, is data
+    re-uploading (Perez-Salinas et al., 2020): the pixels are folded
+    back INTO the rotation angles at every layer, so each register's
+    unitary is data-dependent and nothing cancels. Weights stay tied -
+    one weight tensor drives both registers, which is exactly the
+    shared-weight property that makes a Siamese network a Siamese
+    network.
+
+    v3 additionally amplitude-encodes the raw pixels first, so the
+    circuit sees the whole patch (all patch_size^2 values) rather than
+    the handful of pixels the re-upload layers have room for. The
+    embedding supplies the information; the re-upload layers supply the
+    trainability.
     """
 
-    def __init__(self, n_qubits: int = 5, n_layers: int = 2):
-        self.n_qubits = n_qubits
-        self.n_layers = n_layers
-        self.reg_a = list(range(0, n_qubits))
-        self.reg_b = list(range(n_qubits, 2 * n_qubits))
-        self.ancilla = 2 * n_qubits
-        self.n_wires = 2 * n_qubits + 1
-
-        self.dev = qml.device('default.qubit', wires=self.n_wires)
-        self.weights = pnp.random.uniform(
-            0, 2 * np.pi, (n_layers, n_qubits, 3), requires_grad=True
-        )
-        self.qnode = qml.QNode(self._circuit, self.dev, diff_method='parameter-shift')
-
     @staticmethod
-    def _feature_angle(features, idx):
-        """Angle-encode one (already L2-normalized) feature component,
-        cycling through the vector via modulo so any n_qubits/n_layers
-        combination can draw as many re-upload angles as it needs."""
-        return float(features[idx % len(features)]) * np.pi
+    def _pick_device(n_wires, requested):
+        """
+        lightning.qubit (C++ statevector) is 3-7x faster than default.qubit
+        here and it matters: pair scoring is exhaustive in v3, so the
+        per-circuit cost is multiplied by tens of thousands of pairs.
+        lightning has no 'backprop', so it pairs with 'adjoint' - which is
+        also the more hardware-honest gradient of the two.
+        """
+        if requested == 'auto':
+            try:
+                return qml.device('lightning.qubit', wires=n_wires), 'adjoint'
+            except Exception:
+                return qml.device('default.qubit', wires=n_wires), 'backprop'
+        if requested in ('adjoint', 'parameter-shift'):
+            try:
+                return qml.device('lightning.qubit', wires=n_wires), requested
+            except Exception:
+                return qml.device('default.qubit', wires=n_wires), requested
+        return qml.device('default.qubit', wires=n_wires), requested
 
-    def _reupload_block(self, weights, wires, features):
+    def __init__(self, patch_size: int = 8, n_layers: int = 3,
+                 n_offset_qubits: int = 2, img_size: int = 256,
+                 diff_method: str = 'auto', seed: int = None):
+        self.patch_size = patch_size
+        self.n_qubits = qubits_for_patch(patch_size)
+        self.n_layers = n_layers
+        self.n_offset_qubits = n_offset_qubits
+        self.img_size = img_size
+        self.diff_method = diff_method
+        self.state_dim = 2 ** self.n_qubits
+
+        self.reg_a = list(range(0, self.n_qubits))
+        self.reg_b = list(range(self.n_qubits, 2 * self.n_qubits))
+        self.reg_off = list(range(2 * self.n_qubits,
+                                  2 * self.n_qubits + n_offset_qubits))
+        self.ancilla = 2 * self.n_qubits + n_offset_qubits
+        self.n_wires = self.ancilla + 1
+
+        # Amplitudes of a normalized 2^n vector are O(1/sqrt(2^n)), which
+        # would make the re-upload angles vanishingly small and the data
+        # dependence (the thing keeping gradients alive) numerically
+        # negligible. Rescaling by sqrt(dim) puts a mid-grey pixel near
+        # 1 rad. Angles wrap mod 2*pi, so overshoot on bright pixels is
+        # harmless.
+        self.reupload_scale = np.sqrt(self.state_dim)
+
+        self.dev, self.diff_method = self._pick_device(self.n_wires, diff_method)
+
+        rng = pnp.random.default_rng(seed) if seed is not None else pnp.random
+        self.weights = pnp.array(
+            rng.uniform(0, 2 * np.pi, (n_layers, self.n_qubits, 3)),
+            requires_grad=True)
+        # Row 0: offset encoding bias (random). Row 1: CRY readout coupling,
+        # initialized NEAR ZERO on purpose. The CRY gates sit inside the
+        # swap-test interferometer, so a random coupling partially decoheres
+        # the ancilla and caps the output: at random init, two IDENTICAL
+        # patches scored only ~0.32 instead of 1.0, meaning the model could
+        # not reach its own positive label and training started above the
+        # constant-predictor floor. Starting at CRY ~ identity makes the
+        # circuit a clean swap test (identical patches -> 1.0) that then
+        # LEARNS how much offset coupling to introduce.
+        self.offset_weights = pnp.array(
+            np.concatenate([
+                rng.uniform(0, 2 * np.pi, (1, n_offset_qubits)),
+                rng.uniform(-0.05, 0.05, (1, n_offset_qubits)),
+            ]),
+            requires_grad=True)
+
+        self.qnode = qml.QNode(self._circuit, self.dev, diff_method=self.diff_method)
+
+    def _reupload_angle(self, state, idx):
         """
-        Tied weights, re-uploaded data: this exact weight tensor is used
-        for BOTH registers, but at every layer the rotation angles are
-        `weight + (that register's own feature angle)`, so reg_a and reg_b
-        apply genuinely different gates (see class docstring for why the
-        additive/interleaved form - not a post-embedding-only U(w) - is
-        required to avoid the swap test cancelling the weight dependence).
+        One re-upload angle from the encoded state, cycling with modulo so
+        any patch_size / n_layers combination has enough values.
+
+        Indexes the LAST axis so a batched state of shape (B, dim) works
+        as well as a single (dim,) vector - that is what lets the QNode be
+        parameter-broadcast over many pairs at once, which is the
+        difference between usable and unusable inference speed here.
         """
+        state = pnp.asarray(state)
+        return state[..., idx % state.shape[-1]] * self.reupload_scale * np.pi
+
+    def _reupload_block(self, weights, wires, state):
+        """Tied weights + that register's own re-uploaded data."""
         idx = 0
         for layer in range(self.n_layers):
             for k, wire in enumerate(wires):
-                a_x = weights[layer, k, 0] + self._feature_angle(features, idx); idx += 1
-                a_y = weights[layer, k, 1] + self._feature_angle(features, idx); idx += 1
-                a_z = weights[layer, k, 2] + self._feature_angle(features, idx); idx += 1
+                a_x = weights[layer, k, 0] + self._reupload_angle(state, idx); idx += 1
+                a_y = weights[layer, k, 1] + self._reupload_angle(state, idx); idx += 1
+                a_z = weights[layer, k, 2] + self._reupload_angle(state, idx); idx += 1
                 qml.RX(a_x, wires=wire)
                 qml.RY(a_y, wires=wire)
                 qml.RZ(a_z, wires=wire)
             for k, wire in enumerate(wires):
                 qml.CNOT(wires=[wire, wires[(k + 1) % len(wires)]])
 
-    def _circuit(self, features_a, features_b, weights):
-        # Shared/tied weight tensor, re-uploaded with each register's own
-        # data at every layer (replaces AmplitudeEmbedding + a
-        # data-independent tied block - see class docstring).
-        self._reupload_block(weights, self.reg_a, features_a)
-        self._reupload_block(weights, self.reg_b, features_b)
+    def _circuit(self, state_a, state_b, offset, weights, offset_weights):
+        # 1. Load the RAW patches (all patch_size^2 pixels, no descriptor).
+        qml.AmplitudeEmbedding(state_a, wires=self.reg_a,
+                               normalize=True, pad_with=0.0)
+        qml.AmplitudeEmbedding(state_b, wires=self.reg_b,
+                               normalize=True, pad_with=0.0)
 
-        # Swap test
+        # 2. Tied, data-re-uploading variational blocks (see class docstring).
+        self._reupload_block(weights, self.reg_a, state_a)
+        self._reupload_block(weights, self.reg_b, state_b)
+
+        # 3. Encode the pair's spatial offset - the in-circuit stand-in for
+        #    v2's classical (dy, dx) Hough vote.
+        offset = pnp.asarray(offset)
+        for k, wire in enumerate(self.reg_off):
+            qml.RY(offset_weights[0, k]
+                   + offset[..., k % offset.shape[-1]] * np.pi,
+                   wires=wire)
+
+        # 4. Swap test with a trainable, offset-conditioned readout. The
+        #    CRY gates sit INSIDE the interferometer, so the offset
+        #    register modulates the ancilla fringe rather than being read
+        #    out separately. This makes the output a learned function of
+        #    (patch A, patch B, offset) instead of a textbook overlap -
+        #    which is why it is no longer guaranteed to land in [0, 1] and
+        #    similarity() clips.
         qml.Hadamard(wires=self.ancilla)
         for a, b in zip(self.reg_a, self.reg_b):
             qml.CSWAP(wires=[self.ancilla, a, b])
+        for k, wire in enumerate(self.reg_off):
+            qml.CRY(offset_weights[1, k], wires=[wire, self.ancilla])
         qml.Hadamard(wires=self.ancilla)
 
         return qml.expval(qml.PauliZ(self.ancilla))
 
-    def similarity(self, features_a, features_b, weights=None):
-        """Returns learned similarity in [0, 1]. 1 = identical states."""
+    def similarity(self, state_a, state_b, offset, weights=None,
+                   offset_weights=None):
+        """Learned match score in [0, 1]. 1 = confident copy-move pair."""
         w = self.weights if weights is None else weights
-        val = self.qnode(features_a, features_b, w)
-        return float(val)
+        wo = self.offset_weights if offset_weights is None else offset_weights
+        val = self.qnode(state_a, state_b, offset, w, wo)
+        return float(np.clip(float(val), 0.0, 1.0))
 
+    # ---- persistence -------------------------------------------------- #
+    # v3 has two weight tensors plus architecture metadata, so checkpoints
+    # are .npz. v2's single-array .npy checkpoints are NOT loadable - the
+    # circuit shape changed and the old weights are meaningless here.
     def save(self, path):
-        np.save(path, qml.numpy.array(self.weights))
+        np.savez(path,
+                 weights=np.array(self.weights),
+                 offset_weights=np.array(self.offset_weights),
+                 patch_size=self.patch_size,
+                 n_qubits=self.n_qubits,
+                 n_layers=self.n_layers,
+                 n_offset_qubits=self.n_offset_qubits,
+                 img_size=self.img_size)
 
     def load(self, path):
-        loaded = np.load(path)
-        self.weights = pnp.array(loaded, requires_grad=True)
+        path = str(path)
+        if path.endswith('.npy'):
+            raise ValueError(
+                f"{path} is a v2 (hybrid) checkpoint. v3 is a different "
+                "circuit - amplitude-encoded raw pixels, an offset register "
+                "and a different weight shape - so v2 weights cannot be "
+                "reused. Retrain with --mode train.")
+        data = np.load(path, allow_pickle=False)
+        self.weights = pnp.array(data['weights'], requires_grad=True)
+        self.offset_weights = pnp.array(data['offset_weights'], requires_grad=True)
+
+        ckpt_patch = int(data['patch_size'])
+        ckpt_layers = int(data['n_layers'])
+        if ckpt_patch != self.patch_size or ckpt_layers != self.n_layers:
+            raise ValueError(
+                f"Checkpoint architecture mismatch: checkpoint was trained "
+                f"with patch_size={ckpt_patch}, n_layers={ckpt_layers} but "
+                f"this model was built with patch_size={self.patch_size}, "
+                f"n_layers={self.n_layers}.")
 
 
 # ============================================================================
@@ -463,7 +619,7 @@ class SwapTestSiameseQNN:
 # ============================================================================
 
 def make_synthetic_pairs(image: np.ndarray, patch_size: int, n_pos: int = 6, n_neg: int = 6,
-                          rng: np.random.Generator = None):
+                          rng: np.random.Generator = None, rotate: bool = False):
     """
     Paste a real patch (optionally rotated) into a NEW location of a copy
     of `image`, then extract features from that pasted region - a genuine
@@ -471,15 +627,15 @@ def make_synthetic_pairs(image: np.ndarray, patch_size: int, n_pos: int = 6, n_n
     its own in-place rotation. Sample random non-matching patches as
     negatives. Returns (features_list_a, features_list_b, labels).
 
-    Note: extract_patch_features() is purely local to a patch's own pixel
-    content (DCT + histogram, no neighborhood context), so pasting-then-
-    extracting is numerically identical to extracting from the rotated
-    source patch directly - relocation alone doesn't add signal without
-    also modeling paste-boundary/blending effects, which this does not do.
-    This fix corrects the pair-construction logic to match its documented
-    intent (an earlier version sampled a target location but never used
-    it), it does not by itself model photometric/blending mismatches a
-    real copy-move forgery would have.
+    Each pair also carries its spatial offset, which the offset register
+    in the circuit consumes. Positives get the true (dy, dx) of the
+    duplication; negatives get the offset of the two sampled locations.
+
+    Note: prepare_patch_state() is purely local to a patch's own pixel
+    content, so pasting-then-encoding is numerically identical to
+    encoding the rotated source patch directly - relocation alone doesn't
+    add signal without also modeling paste-boundary/blending effects,
+    which this does not do. Carried over honestly from v2.
     """
     rng = rng or np.random.default_rng()
     H, W = image.shape
@@ -493,7 +649,18 @@ def make_synthetic_pairs(image: np.ndarray, patch_size: int, n_pos: int = 6, n_n
     for _ in range(n_pos):
         y1, x1 = rand_loc()
         src_patch = image[y1:y1 + patch_size, x1:x1 + patch_size].copy()
-        rot_k = rng.choice([0, 1, 2, 3])  # 0/90/180/270 - discrete rotation robustness
+        # Rotation is OFF by default, and that is a deliberate correction,
+        # not a regression. A swap test compares amplitude vectors, so a
+        # 90-degree rotation permutes the amplitudes into a nearly
+        # orthogonal state: measured on the untrained circuit, an exact
+        # rot90 duplicate scores ~0.01 while an exact copy scores ~1.0.
+        # Labelling those pairs 1.0 asks the model to fit a target its
+        # architecture provably cannot represent (offset handling here is
+        # translation-only), which pins training loss ABOVE the 0.25
+        # constant-predictor floor - exactly the non-convergence the v2
+        # model was reported to have. Turn back on only together with a
+        # dtheta component in the offset register.
+        rot_k = rng.choice([0, 1, 2, 3]) if rotate else 0
         src_patch_rot = np.rot90(src_patch, k=rot_k)
         if src_patch_rot.shape != (patch_size, patch_size):
             src_patch_rot = src_patch  # guard for non-square edge cases
@@ -505,18 +672,20 @@ def make_synthetic_pairs(image: np.ndarray, patch_size: int, n_pos: int = 6, n_n
         forged = image.copy()
         forged[y2:y2 + patch_size, x2:x2 + patch_size] = src_patch_rot
 
-        f_a = extract_patch_features(src_patch)
-        f_b = extract_patch_features(forged[y2:y2 + patch_size, x2:x2 + patch_size])
-        pos_pairs.append((f_a, f_b, 1.0))
+        f_a = prepare_patch_state(src_patch)
+        f_b = prepare_patch_state(forged[y2:y2 + patch_size, x2:x2 + patch_size])
+        off = encode_offset(y2 - y1, x2 - x1, H)
+        pos_pairs.append((f_a, f_b, off, 1.0))
 
     for _ in range(n_neg):
         y1, x1 = rand_loc()
         y2, x2 = rand_loc()
         p1 = image[y1:y1 + patch_size, x1:x1 + patch_size]
         p2 = image[y2:y2 + patch_size, x2:x2 + patch_size]
-        f_a = extract_patch_features(p1)
-        f_b = extract_patch_features(p2)
-        neg_pairs.append((f_a, f_b, 0.0))
+        f_a = prepare_patch_state(p1)
+        f_b = prepare_patch_state(p2)
+        off = encode_offset(y2 - y1, x2 - x1, H)
+        neg_pairs.append((f_a, f_b, off, 0.0))
 
     all_pairs = pos_pairs + neg_pairs
     rng.shuffle(all_pairs)
@@ -528,8 +697,15 @@ def make_synthetic_pairs(image: np.ndarray, patch_size: int, n_pos: int = 6, n_n
 # ============================================================================
 
 def train(qnn: SwapTestSiameseQNN, dataset: CoMoFoDDataset, epochs: int = 10,
-          images_per_epoch: int = 20, pairs_per_image: int = 12, patch_size: int = 32,
-          lr: float = 0.1, checkpoint_dir: str = './checkpoints', seed: int = 42):
+          images_per_epoch: int = 20, pairs_per_image: int = 12, patch_size: int = 16,
+          lr: float = 0.1, checkpoint_dir: str = './checkpoints', seed: int = 42,
+          rotate: bool = False):
+    """
+    Both trainable tensors are circuit rotation angles - `weights` (the
+    tied re-uploading ansatz) and `offset_weights` (the offset register
+    and its readout coupling). There is no classical trainable parameter
+    anywhere, which is what makes this a pure QNN rather than a hybrid.
+    """
     Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
     opt = qml.GradientDescentOptimizer(stepsize=lr)
     rng = np.random.default_rng(seed)
@@ -544,16 +720,18 @@ def train(qnn: SwapTestSiameseQNN, dataset: CoMoFoDDataset, epochs: int = 10,
             image = dataset.get_training_image(int(img_idx))
             n_pos = pairs_per_image // 2
             n_neg = pairs_per_image - n_pos
-            batch = make_synthetic_pairs(image, patch_size, n_pos=n_pos, n_neg=n_neg, rng=rng)
+            batch = make_synthetic_pairs(image, patch_size, n_pos=n_pos, n_neg=n_neg,
+                                         rng=rng, rotate=rotate)
 
-            def cost(weights, batch=batch):
+            def cost(weights, offset_weights, batch=batch):
                 total = 0.0
-                for f_a, f_b, label in batch:
-                    pred = qnn.qnode(f_a, f_b, weights)
+                for f_a, f_b, off, label in batch:
+                    pred = qnn.qnode(f_a, f_b, off, weights, offset_weights)
                     total = total + (pred - label) ** 2
                 return total / len(batch)
 
-            qnn.weights, loss_val = opt.step_and_cost(cost, qnn.weights)
+            (qnn.weights, qnn.offset_weights), loss_val = opt.step_and_cost(
+                cost, qnn.weights, qnn.offset_weights)
             epoch_losses.append(float(loss_val))
             if hasattr(pbar, 'set_postfix'):
                 pbar.set_postfix(loss=f"{float(loss_val):.4f}")
@@ -562,7 +740,7 @@ def train(qnn: SwapTestSiameseQNN, dataset: CoMoFoDDataset, epochs: int = 10,
         history.append(mean_loss)
         print(f"[Epoch {epoch+1}/{epochs}] mean loss = {mean_loss:.4f}")
 
-        ckpt_path = Path(checkpoint_dir) / f"swaptest_qnn_epoch{epoch+1}.npy"
+        ckpt_path = Path(checkpoint_dir) / f"swaptest_qnn_epoch{epoch+1}.npz"
         qnn.save(ckpt_path)
         print(f"[INFO] Checkpoint saved: {ckpt_path}")
 
@@ -575,65 +753,38 @@ def train(qnn: SwapTestSiameseQNN, dataset: CoMoFoDDataset, epochs: int = 10,
 # INFERENCE: pairwise scoring + spatial offset-consistency filtering
 # ============================================================================
 
-def find_dominant_offsets(matched_pairs, coords, offset_bin: int = 4, min_votes: int = 3):
+def detect_copy_move(image: np.ndarray, qnn: SwapTestSiameseQNN, patch_size: int = 16,
+                      stride: int = 16, sim_threshold: float = 0.8,
+                      verbose: bool = True):
     """
-    Histogram vote over (dy, dx) offsets between matched patch centers.
-    A genuine copy-move produces MANY pairs sharing (approximately) the
-    same offset; coincidental look-alikes (sky, walls) do not cluster.
-    This currently votes on translation only.
+    Full pure-quantum pipeline for one test image -> binary forgery mask.
 
-    TODO (rotation, CR category): extend the vote key to
-    (dy_bin, dx_bin, dtheta_bin) using a dominant-orientation feature
-    (e.g. patch gradient histogram peak) per patch so that rotated
-    copy-move pairs also cluster instead of being spread across many
-    offset bins.
+    Every stage that used to be classical is gone: no DCT descriptor, no
+    lexicographic prefilter, no (dy, dx) Hough vote, no morphology. What
+    remains is state preparation, circuit evaluation, and a threshold on
+    the measured expectation value.
     """
-    votes = defaultdict(list)
-    for (i, j, sim) in matched_pairs:
+    H, W = image.shape
+    coords, states = extract_all_patches(image, patch_size, stride)
+    pairs = generate_all_pairs(coords, min_spatial_dist=patch_size)
+
+    if verbose:
+        print(f"  [INFO] {len(coords)} patches -> {len(pairs)} pairs "
+              f"(exhaustive; v2's classical prefilter removed)")
+
+    matched_pairs = []
+    it = tqdm(pairs, desc="  Quantum pair scoring", disable=not verbose)
+    for (i, j) in it:
         yi, xi = coords[i]
         yj, xj = coords[j]
-        dy, dx = yj - yi, xj - xi
-        key = (round(dy / offset_bin), round(dx / offset_bin))
-        votes[key].append((i, j, sim))
-        # offsets are symmetric (i,j) vs (j,i) - vote both directions
-        key_rev = (round(-dy / offset_bin), round(-dx / offset_bin))
-        votes[key_rev].append((i, j, sim))
-
-    dominant_keys = [k for k, v in votes.items() if len(v) >= min_votes]
-    kept = set()
-    for k in dominant_keys:
-        for (i, j, sim) in votes[k]:
-            kept.add((i, j, sim))
-    return list(kept)
-
-
-def detect_copy_move(image: np.ndarray, qnn: SwapTestSiameseQNN, patch_size: int = 32,
-                      stride: int = 8, block_window: int = 12, sim_threshold: float = 0.8,
-                      offset_bin: int = 4, min_offset_votes: int = 3, verbose: bool = True):
-    """Full pairwise pipeline for one test image -> binary forgery mask."""
-    H, W = image.shape
-    coords, feats = extract_all_patches(image, patch_size, stride)
-
-    candidate_pairs = generate_candidate_pairs(coords, feats, window=block_window,
-                                                min_spatial_dist=patch_size)
-    if verbose:
-        print(f"  [INFO] {len(coords)} patches -> {len(candidate_pairs)} candidate pairs "
-              f"(vs {len(coords) * (len(coords) - 1) // 2} for brute force)")
-
-    scored_pairs = []
-    it = tqdm(candidate_pairs, desc="  Swap-test scoring", disable=not verbose)
-    for (i, j) in it:
-        sim = qnn.similarity(feats[i], feats[j])
+        off = encode_offset(yj - yi, xj - xi, H)
+        sim = qnn.similarity(states[i], states[j], off)
         if sim >= sim_threshold:
-            scored_pairs.append((i, j, sim))
+            matched_pairs.append((i, j, sim))
 
     if verbose:
-        print(f"  [INFO] {len(scored_pairs)} pairs above similarity threshold {sim_threshold}")
-
-    matched_pairs = find_dominant_offsets(scored_pairs, coords, offset_bin=offset_bin,
-                                           min_votes=min_offset_votes)
-    if verbose:
-        print(f"  [INFO] {len(matched_pairs)} pairs kept after offset-consistency filtering")
+        print(f"  [INFO] {len(matched_pairs)} pairs above threshold {sim_threshold} "
+              f"(circuit output is the only decision signal)")
 
     mask = np.zeros((H, W), dtype=np.uint8)
     for (i, j, sim) in matched_pairs:
@@ -641,9 +792,6 @@ def detect_copy_move(image: np.ndarray, qnn: SwapTestSiameseQNN, patch_size: int
             y, x = coords[idx]
             mask[y:y + patch_size, x:x + patch_size] = 1
 
-    kernel = np.ones((3, 3), dtype=bool)
-    mask = binary_dilation(mask.astype(bool), structure=kernel, iterations=1)
-    mask = binary_erosion(mask, structure=kernel, iterations=1)
     return mask.astype(np.uint8), matched_pairs, coords
 
 
@@ -671,40 +819,85 @@ def compute_metrics(pred_mask: np.ndarray, gt_mask: np.ndarray) -> dict:
 # ============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description='CMFD v2 - Siamese Swap-Test QNN')
+    parser = argparse.ArgumentParser(
+        description='CMFD v3 - PURE Siamese Swap-Test QNN (no classical stages)')
     parser.add_argument('--mode', choices=['train', 'test'], required=True)
     parser.add_argument('--dataset-dir', type=str, required=True)
     parser.add_argument('--checkpoint', type=str, default=None,
-                         help='Path to a .npy weights file (required for --mode test)')
-    parser.add_argument('--checkpoint-dir', type=str, default='./checkpoints')
-    parser.add_argument('--patch-size', type=int, default=32)
-    parser.add_argument('--stride', type=int, default=8)
-    parser.add_argument('--n-qubits', type=int, default=4,
-                         help='Per register. Total wires = 2*n_qubits + 1 ancilla.')
-    parser.add_argument('--n-layers', type=int, default=2)
+                         help='Path to a .npz weights file (required for --mode test). '
+                              'v2 .npy checkpoints are not loadable - retrain.')
+    parser.add_argument('--checkpoint-dir', type=str, default='./checkpoints_pure')
+    parser.add_argument('--patch-size', type=int, default=8,
+                         help='Powers of two only; sets qubits per register to '
+                              'log2(patch_size^2). 8->6q (15 wires, ~0.036 s/pair), '
+                              '16->8q (19 wires, ~0.82 s/pair - 23x slower, since '
+                              'simulation cost is exponential in total wires).')
+    parser.add_argument('--img-size', type=int, default=128,
+                         help='Working resolution. Lowered from 256 to 128 so that '
+                              'FULL TILING (stride == patch-size) stays affordable: '
+                              'exhaustive pair scoring is O(patches^2), and 256px '
+                              'tiled is ~520k pairs (~5 h/image) vs ~33k (~20 min) '
+                              'at 128px.')
+    parser.add_argument('--stride', type=int, default=8,
+                         help='Set this EQUAL to --patch-size for full coverage. '
+                              'Larger strides leave gaps: at 256px/stride 32 only 3 of '
+                              '64 patches landed inside a 2%%-area forged region and '
+                              'forged vs authentic images scored identically. Cost is '
+                              'O(patches^2): 128px tiled -> 256 patches / ~33k pairs / '
+                              '~20 min per image.')
+    parser.add_argument('--n-layers', type=int, default=3,
+                         help='Data re-uploading blocks. More = more expressive '
+                              'and proportionally slower.')
+    parser.add_argument('--n-offset-qubits', type=int, default=2,
+                         help='Wires for the in-circuit offset register.')
+    parser.add_argument('--diff-method', type=str, default='auto',
+                         choices=['auto', 'adjoint', 'backprop', 'parameter-shift'],
+                         help="'auto' uses lightning.qubit + adjoint when available "
+                              "(fastest), else default.qubit + backprop. 'backprop' "
+                              "is simulator-only. 'parameter-shift' is the "
+                              "hardware-realizable gradient but costs 2 circuit "
+                              "evals PER PARAMETER - far slower.")
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--images-per-epoch', type=int, default=20)
     parser.add_argument('--pairs-per-image', type=int, default=12)
     parser.add_argument('--lr', type=float, default=0.1)
-    parser.add_argument('--block-window', type=int, default=12)
     parser.add_argument('--sim-threshold', type=float, default=0.8)
-    parser.add_argument('--offset-bin', type=int, default=4)
-    parser.add_argument('--min-offset-votes', type=int, default=3)
+    parser.add_argument('--train-rotations', action='store_true',
+                         help='Include 90/180/270-rotated positives in the '
+                              'synthetic training pairs. OFF by default: the '
+                              'circuit is translation-only, so rotated pairs are '
+                              'unfittable targets that hold loss above the 0.25 '
+                              'constant-predictor floor. See make_synthetic_pairs.')
     parser.add_argument('--num-images', type=int, default=5)
-    parser.add_argument('--output-dir', type=str, default='./results_v2')
+    parser.add_argument('--output-dir', type=str, default='./results_pure')
     parser.add_argument('--seed', type=int, default=42)
     args = parser.parse_args()
 
     np.random.seed(args.seed)
-    dataset = CoMoFoDDataset(args.dataset_dir, img_size=256, grayscale=True)
-    qnn = SwapTestSiameseQNN(n_qubits=args.n_qubits, n_layers=args.n_layers)
-    print(f"[INFO] QNN wires: {qnn.n_wires} ({args.n_qubits} per register + 1 ancilla), "
-          f"{np.prod(qnn.weights.shape)} trainable parameters (shared/tied across both registers)")
+    dataset = CoMoFoDDataset(args.dataset_dir, img_size=args.img_size, grayscale=True)
+    qnn = SwapTestSiameseQNN(patch_size=args.patch_size, n_layers=args.n_layers,
+                             n_offset_qubits=args.n_offset_qubits,
+                             img_size=args.img_size,
+                             diff_method=args.diff_method)
+    if args.stride > args.patch_size:
+        print(f"[WARN] stride ({args.stride}) > patch-size ({args.patch_size}): patches "
+              f"do NOT tile, so {100 * args.patch_size / args.stride:.0f}% of each axis is "
+              f"never examined. Measured consequence at 256px/stride 32: only 3 of 64 "
+              f"patches fell inside a 2%-area forged region, and forged vs authentic "
+              f"images produced IDENTICAL output. Use --stride == --patch-size for "
+              f"full coverage.")
+    n_params = int(np.prod(qnn.weights.shape) + np.prod(qnn.offset_weights.shape))
+    print(f"[INFO] PURE QNN: {qnn.n_wires} wires "
+          f"({qnn.n_qubits}/register x2 + {args.n_offset_qubits} offset + 1 ancilla), "
+          f"{n_params} trainable rotation angles (tied across both registers). "
+          f"No classical trainable parameters.")
+    print(f"[INFO] Device: {qnn.dev.name}, diff_method: {qnn.diff_method}")
 
     if args.mode == 'train':
         train(qnn, dataset, epochs=args.epochs, images_per_epoch=args.images_per_epoch,
               pairs_per_image=args.pairs_per_image, patch_size=args.patch_size,
-              lr=args.lr, checkpoint_dir=args.checkpoint_dir, seed=args.seed)
+              lr=args.lr, checkpoint_dir=args.checkpoint_dir, seed=args.seed,
+              rotate=args.train_rotations)
         return
 
     # test mode
@@ -724,8 +917,7 @@ def main():
         print(f"\n--- {img_name} ---")
         pred_mask, matched_pairs, coords = detect_copy_move(
             img, qnn, patch_size=args.patch_size, stride=args.stride,
-            block_window=args.block_window, sim_threshold=args.sim_threshold,
-            offset_bin=args.offset_bin, min_offset_votes=args.min_offset_votes)
+            sim_threshold=args.sim_threshold)
         metrics = compute_metrics(pred_mask, gt_mask)
         transform_type = CoMoFoDDataset.get_transformation_type(img_name)
         print(f"  {transform_type}: F1={metrics['f1']:.4f} IoU={metrics['iou']:.4f}")
@@ -735,8 +927,8 @@ def main():
 
     import pandas as pd
     results_df = pd.DataFrame(results)
-    results_df.to_csv(Path(args.output_dir) / 'results_v2.csv', index=False)
-    print(f"\n[INFO] Results saved to {args.output_dir}/results_v2.csv")
+    results_df.to_csv(Path(args.output_dir) / 'results_pure.csv', index=False)
+    print(f"\n[INFO] Results saved to {args.output_dir}/results_pure.csv")
 
 
 if __name__ == '__main__':

@@ -139,7 +139,7 @@ HTML = r"""<!doctype html>
   <h1>Copy-Move Forgery Detection using a<br>Siamese Swap-Test Quantum Neural Network</h1>
   <div class="sub">Phase-2 Progress &amp; Evaluation Report</div>
   <div class="meta">Final Year Project &middot; Phase 2 &nbsp;|&nbsp; Date: 26 July 2026 &nbsp;|&nbsp;
-    Pipeline: <code>cmfd_swaptest_pipeline.py</code> (v2)</div>
+    Pipeline: <code>cmfd_swaptest_pipeline.py</code> (v3 &mdash; pure QNN)</div>
 </div>
 
 <h2>1. Executive Summary</h2>
@@ -157,36 +157,75 @@ filter that keeps only genuine duplications.</p>
   pixel accuracy on those samples is ~3&ndash;12%, and localization quality (F1/IoU) is low.
   The remaining work is <b>detection quality</b>, not plumbing.
 </div>
+<div class="callout red">
+  <b>v3 finding &mdash; the reported non-convergence was a data bug, not a model bug.</b>
+  Training loss was previously stuck at ~0.33, above the 0.25 constant-predictor floor, and this
+  was attributed to the model. The actual cause was in synthetic pair construction: positives
+  were rotated 90/180/270&deg; three times out of four. A swap test compares amplitude vectors, so
+  a rot90 duplicate permutes the state into a near-orthogonal one &mdash; <b>measured: an exact
+  rot90 copy scores ~0.01 where an exact copy scores ~1.0</b>. Labelling those pairs 1.0 asks the
+  circuit to fit a target its translation-only architecture provably cannot represent.
+  With rotations excluded, <b>loss drops to ~0.003&ndash;0.10</b>, far below the floor.
+  Rotated positives remain available behind <code>--train-rotations</code> and should only be
+  re-enabled together with a d&theta; component in the offset register.
+</div>
+<div class="callout">
+  <b>Status of &sect;6&ndash;&sect;10.</b> The results, gap analysis, recommendations and roadmap below were
+  produced with the <b>v2 hybrid</b> and have <b>not yet been re-run against v3</b>. They are
+  retained as the v2 baseline for comparison. Treat every number in them as v2 until the v3
+  evaluation is complete; v3 is expected to score <i>lower</i>, since removing the offset vote
+  removed the stage that actually suppressed false matches.
+</div>
 
 <h2>2. Objective &amp; Target Output</h2>
 <p>The intended end product: <i>given any input image, decide whether it is forged, and if so,
 localize the exact duplicated region as a bounding box or heatmap.</i> That decomposes into
 four capabilities, tracked in the gap analysis (&sect;8).</p>
 
-<h2>3. System Architecture</h2>
+<h2>3. System Architecture (v3 &mdash; pure QNN)</h2>
 <p>The architecture is a <b>pairwise similarity model</b>, which is the structurally correct choice
 for copy-move (the task is inherently &ldquo;does patch A match patch B elsewhere?&rdquo;). A single-patch
-classifier cannot express duplication. An earlier degenerate embedding (fixed amplitude
-embedding + data-independent tied unitary, which the swap test provably cancels) was replaced
-with a <b>data re-uploading</b> ansatz so the tied weights have a genuine effect on the measured
-overlap.</p>
+classifier cannot express duplication.</p>
+<p><b>v3 removes every classical detection stage from the v2 hybrid.</b> v2 was quantum only in its
+similarity readout: a classical DCT descriptor decided what the circuit was allowed to see, a
+classical sort decided which pairs it was allowed to score, and a classical Hough vote decided
+which of its outputs to believe. In v3 raw pixels enter the circuit and a measured expectation
+value is the decision.</p>
 <table class="avoid-break">
-  <tr><th style="width:34%">Component</th><th>Specification</th></tr>
-  <tr><td>Quantum registers</td><td><b>4 qubits per register</b>, two registers (patch&nbsp;A, patch&nbsp;B) = 8 qubits <b>+ 1 ancilla</b> for the swap test = <b>9 wires total</b></td></tr>
-  <tr><td>Trainable parameters</td><td><b>24</b> &mdash; shape (2 layers &times; 4 qubits &times; 3 rotations RX/RY/RZ); the same weight tensor is <b>tied</b> across both registers (Siamese)</td></tr>
-  <tr><td>Similarity readout</td><td>Swap test: ancilla &lang;Z&rang; = |&lang;&psi;<sub>A</sub>|&psi;<sub>B</sub>&rang;|&sup2;, a learned similarity in [0,1]</td></tr>
-  <tr><td>Patches</td><td><b>32&times;32</b> px, stride <b>8</b>, sliding window &rarr; <b>841 patches</b> on a 256&times;256 image</td></tr>
-  <tr><td>Patch descriptor</td><td><b>24-dim</b>: 12 largest-magnitude DCT coefficients + 12-bin intensity histogram, L2-normalized, angle-encoded via data re-uploading</td></tr>
-  <tr><td>Candidate pairing</td><td>O(N log N) lexicographic block-matching (Fridrich-style) &mdash; sort by feature, compare within a sliding window, instead of O(N&sup2;) all-pairs</td></tr>
-  <tr><td>False-match suppression</td><td>Offset-consistency vote over (dy, dx): genuine copy-move produces many pairs sharing one offset (translation only &mdash; rotation is a documented TODO)</td></tr>
-  <tr><td>Binary mask</td><td>GT: grayscale &rarr; NEAREST resize &rarr; threshold &gt;128. Prediction: fill matched-pair patches &rarr; morphological close (dilate&rarr;erode)</td></tr>
-  <tr><td>Training</td><td>Self-supervised synthetic copy-move pairs (parameter-shift gradients, MSE on similarity labels)</td></tr>
+  <tr><th style="width:30%">Stage</th><th>v2 (hybrid)</th><th>v3 (pure)</th></tr>
+  <tr><td>Patch representation</td><td>24-dim DCT coefficients + intensity histogram</td><td><b>AmplitudeEmbedding of the raw pixels</b> &mdash; all patch&sup2; values, L2-normalized state preparation only</td></tr>
+  <tr><td>Candidate pairing</td><td>O(N log N) lexicographic block matching (Fridrich)</td><td><b>Exhaustive</b> &mdash; every admissible pair scored by the circuit, O(N&sup2;)</td></tr>
+  <tr><td>False-match suppression</td><td>Classical (dy, dx) Hough vote</td><td><b>In-circuit offset register</b> + trainable CRY coupling inside the interferometer</td></tr>
+  <tr><td>Mask cleanup</td><td>Morphological close (dilate&rarr;erode)</td><td><b>None</b></td></tr>
+  <tr><td>Trainable parameters</td><td>circuit rotation angles only</td><td>circuit rotation angles only (<i>unchanged &mdash; v2 was already pure here</i>)</td></tr>
 </table>
-<p><b>Is the architecture correct?</b> Conceptually yes for <i>measuring patch similarity</i>, and the
-degeneracy bug is fixed. But it is <b>incomplete as a detector</b>: (i) there is no image-level
-forged/authentic decision, (ii) the DCT+histogram descriptor is not rotation/scale invariant,
-and (iii) it is not yet shown that the quantum similarity outperforms a classical distance on
-the same features (an ablation is needed).</p>
+<table class="avoid-break">
+  <tr><th style="width:34%">Component</th><th>v3 specification</th></tr>
+  <tr><td>Quantum registers</td><td><b>6 qubits per register</b> (8&times;8 patch = 64 amplitudes), two registers = 12 qubits <b>+ 2 offset qubits + 1 ancilla</b> = <b>15 wires total</b></td></tr>
+  <tr><td>Trainable parameters</td><td><b>58</b> &mdash; (3 layers &times; 6 qubits &times; 3 rotations) tied across both registers, plus (2 &times; 2) offset-register angles</td></tr>
+  <tr><td>Similarity readout</td><td>Swap test with an offset-conditioned readout: H &rarr; CSWAP &rarr; trainable CRY from the offset wires &rarr; H, measured as ancilla &lang;Z&rang;, clipped to [0,1]</td></tr>
+  <tr><td>Patches</td><td><b>8&times;8</b> px, stride <b>16</b> &rarr; 256 patches / ~33k pairs on a 256&times;256 image</td></tr>
+  <tr><td>Simulation</td><td><code>lightning.qubit</code> + adjoint gradients (3&ndash;7&times; faster than <code>default.qubit</code>; measured <b>0.036 s per pair</b>)</td></tr>
+  <tr><td>Training</td><td>Self-supervised synthetic copy-move pairs, MSE on similarity labels</td></tr>
+</table>
+<div class="callout red">
+  <b>Do not &ldquo;simplify&rdquo; the ansatz.</b> A plain amplitude embedding followed by a
+  data-independent tied unitary is provably degenerate under a swap test:
+  |&lang;U(w)f<sub>A</sub>|U(w)f<sub>B</sub>&rang;|&sup2; = |&lang;f<sub>A</sub>|f<sub>B</sub>&rang;|&sup2;
+  for <i>any</i> U(w), so the gradient w.r.t. w is exactly zero. This was measured, not assumed:
+  gradient norm <b>~1e-16</b> in the degenerate form vs <b>~1.2e-2</b> with data re-uploading.
+  Re-uploading the pixels into the rotation angles is what keeps the tied weights alive.
+</div>
+<p><b>Cost of purity.</b> Removing the classical prefilter makes pair scoring O(N&sup2;), so stride is
+now the dominant cost dial: ~1 min/image at stride 32, ~20 min at stride 16, ~5 h at stride 8.
+The quantum replacement for the prefilter is Grover/amplitude amplification over a pair-index
+register, which requires QRAM to hold all patches in superposition &mdash; not simulable at this
+scale, so it is recorded as future work rather than substituted with a classical stand-in.</p>
+<p><b>Known weakness, stated plainly.</b> The offset register is a <i>weaker</i> mechanism than the
+vote it replaced, not an equivalent one. Offset consistency is a <b>global</b> property of the pair
+ensemble (&ldquo;many pairs share one offset&rdquo;); a per-pair circuit cannot observe clustering it is
+never shown. A faithful quantum version needs quantum counting over all pairs at once. Expect
+more false positives on homogeneous regions (sky, walls) than v2 produced.</p>
 
 <h2 class="pb">4. Datasets &amp; Their Roles</h2>
 <p>Training and evaluation must use <b>different</b> data sources &mdash; a recurring point of confusion.
@@ -217,7 +256,7 @@ forged&rdquo; scores ~90&ndash;98% accuracy while detecting <b>zero</b> forgerie
 the pair that explains F1; never headline accuracy. IoU is literally the metric that measures the
 stated goal (exact forged area).</div>
 
-<h2 class="pb">6. Results</h2>
+<h2 class="pb">6. Results <span style="font-weight:400;font-size:0.7em">(v2 hybrid baseline &mdash; v3 re-evaluation pending)</span></h2>
 
 <h3>6.1 COVERAGE &mdash; loose parameters (threshold 0.8, votes 3, 384&nbsp;px)</h3>
 <table class="avoid-break">

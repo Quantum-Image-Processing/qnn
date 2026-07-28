@@ -10,7 +10,7 @@ Example
     python test_grip.py \
         --dataset-dir ../data/grip \
         --checkpoint ../checkpoints_full/swaptest_qnn_epoch10.npy \
-        --n-qubits 4 --n-layers 2 \
+        --patch-size 8 --n-layers 3 \
         --num-images 20 --output-dir ../results_grip
 
 Add --native-eval to score at the mask's ORIGINAL resolution (predicted
@@ -63,18 +63,20 @@ def main():
     ap = argparse.ArgumentParser(description='Test swap-test QNN on GRIP')
     ap.add_argument('--dataset-dir', required=True)
     ap.add_argument('--checkpoint', required=True,
-                    help='.npy weights file, e.g. ../checkpoints_full/swaptest_qnn_epoch10.npy')
-    ap.add_argument('--n-qubits', type=int, default=4)
-    ap.add_argument('--n-layers', type=int, default=2)
+                    help='.npz weights file, e.g. ../checkpoints_pure/swaptest_qnn_epoch10.npz')
+    # v3 (pure QNN): qubits per register derive from --patch-size.
+    ap.add_argument('--n-layers', type=int, default=3)
+    ap.add_argument('--n-offset-qubits', type=int, default=2)
     # working-resolution / windowing (must match how the model was trained)
     ap.add_argument('--target-long-side', type=int, default=384,
                     help='GRIP long side after aspect-preserving resize')
-    ap.add_argument('--patch-size', type=int, default=32)
-    ap.add_argument('--stride', type=int, default=8)
-    ap.add_argument('--block-window', type=int, default=12)
+    ap.add_argument('--patch-size', type=int, default=8,
+                    help='Powers of two; sets qubits per register to '
+                         'log2(patch_size^2).')
+    ap.add_argument('--stride', type=int, default=16,
+                    help='Pair scoring is exhaustive in v3, so this is the '
+                         'dominant cost dial (cost grows as O(patches^2)).')
     ap.add_argument('--sim-threshold', type=float, default=0.8)
-    ap.add_argument('--offset-bin', type=int, default=4)
-    ap.add_argument('--min-offset-votes', type=int, default=3)
     # eval options
     ap.add_argument('--native-eval', action='store_true',
                     help='score at the mask original resolution (upsample pred)')
@@ -95,10 +97,13 @@ def main():
                      forged_glob=args.forged_glob, mask_glob=args.mask_glob,
                      mask_union=args.mask_union)
 
-    qnn = SwapTestSiameseQNN(n_qubits=args.n_qubits, n_layers=args.n_layers)
+    qnn = SwapTestSiameseQNN(patch_size=args.patch_size, n_layers=args.n_layers,
+                             n_offset_qubits=args.n_offset_qubits,
+                             img_size=args.target_long_side)
     qnn.load(args.checkpoint)
+    n_params = int(np.prod(qnn.weights.shape) + np.prod(qnn.offset_weights.shape))
     print(f"[INFO] Loaded weights from {args.checkpoint} "
-          f"({qnn.n_wires} wires, {np.prod(qnn.weights.shape)} params)")
+          f"({qnn.n_wires} wires, {n_params} params)")
 
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -111,8 +116,7 @@ def main():
 
         pred_mask, matched_pairs, coords = detect_copy_move(
             img, qnn, patch_size=args.patch_size, stride=args.stride,
-            block_window=args.block_window, sim_threshold=args.sim_threshold,
-            offset_bin=args.offset_bin, min_offset_votes=args.min_offset_votes)
+            sim_threshold=args.sim_threshold)
 
         if args.native_eval:
             native_gt, native_hw = ds.load_native_mask(idx)
