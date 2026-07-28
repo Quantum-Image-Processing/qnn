@@ -26,6 +26,11 @@ results/
 
 # ─── Model checkpoints (kept local only; not shared) ───
 checkpoints*/
+# ...except the trained pure-QNN weights: 44 KB total, and without them a
+# collaborator has to retrain (~30 min) before the pipeline or demo will run.
+!checkpoints_pure/
+!checkpoints_pure/*.npz
+!checkpoints_pure/history.json
 
 # ─── OS / editor junk ───
 .DS_Store
