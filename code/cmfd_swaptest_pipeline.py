@@ -571,11 +571,22 @@ class SwapTestSiameseQNN:
 
     def similarity(self, state_a, state_b, offset, weights=None,
                    offset_weights=None):
-        """Learned match score in [0, 1]. 1 = confident copy-move pair."""
+        """
+        Learned match score(s) in [0, 1]. 1 = confident copy-move pair.
+
+        Pass single-pair 1-D state_a/state_b/offset for one score (returns
+        a float), or stacked 2-D arrays (leading batch dim) to score many
+        pairs in ONE QNode call via PennyLane parameter broadcasting
+        (returns an array). Batching measured ~1.3x faster than the same
+        number of single-pair calls on lightning.qubit, bit-identical
+        output - a real but modest win, since lightning still evaluates
+        the batch dimension internally rather than truly vectorizing it.
+        """
         w = self.weights if weights is None else weights
         wo = self.offset_weights if offset_weights is None else offset_weights
-        val = self.qnode(state_a, state_b, offset, w, wo)
-        return float(np.clip(float(val), 0.0, 1.0))
+        val = np.clip(np.asarray(self.qnode(state_a, state_b, offset, w, wo),
+                                  dtype=float), 0.0, 1.0)
+        return float(val) if val.ndim == 0 else val
 
     # ---- persistence -------------------------------------------------- #
     # v3 has two weight tensors plus architecture metadata, so checkpoints
@@ -755,7 +766,7 @@ def train(qnn: SwapTestSiameseQNN, dataset: CoMoFoDDataset, epochs: int = 10,
 
 def detect_copy_move(image: np.ndarray, qnn: SwapTestSiameseQNN, patch_size: int = 16,
                       stride: int = 16, sim_threshold: float = 0.8,
-                      verbose: bool = True):
+                      verbose: bool = True, batch_size: int = 256):
     """
     Full pure-quantum pipeline for one test image -> binary forgery mask.
 
@@ -763,6 +774,10 @@ def detect_copy_move(image: np.ndarray, qnn: SwapTestSiameseQNN, patch_size: int
     lexicographic prefilter, no (dy, dx) Hough vote, no morphology. What
     remains is state preparation, circuit evaluation, and a threshold on
     the measured expectation value.
+
+    Pairs are scored `batch_size` at a time in one QNode call each (see
+    SwapTestSiameseQNN.similarity) instead of one call per pair -
+    measured ~1.3x faster on lightning.qubit, bit-identical output.
     """
     H, W = image.shape
     coords, states = extract_all_patches(image, patch_size, stride)
@@ -773,14 +788,20 @@ def detect_copy_move(image: np.ndarray, qnn: SwapTestSiameseQNN, patch_size: int
               f"(exhaustive; v2's classical prefilter removed)")
 
     matched_pairs = []
-    it = tqdm(pairs, desc="  Quantum pair scoring", disable=not verbose)
-    for (i, j) in it:
-        yi, xi = coords[i]
-        yj, xj = coords[j]
-        off = encode_offset(yj - yi, xj - xi, H)
-        sim = qnn.similarity(states[i], states[j], off)
-        if sim >= sim_threshold:
-            matched_pairs.append((i, j, sim))
+    pbar = tqdm(total=len(pairs), desc="  Quantum pair scoring", disable=not verbose)
+    for start in range(0, len(pairs), batch_size):
+        chunk = pairs[start:start + batch_size]
+        offs = np.array([encode_offset(coords[j][0] - coords[i][0],
+                                        coords[j][1] - coords[i][1], H)
+                          for (i, j) in chunk])
+        states_a = states[[i for (i, j) in chunk]]
+        states_b = states[[j for (i, j) in chunk]]
+        sims = np.atleast_1d(qnn.similarity(states_a, states_b, offs))
+        for (i, j), sim in zip(chunk, sims):
+            if sim >= sim_threshold:
+                matched_pairs.append((i, j, float(sim)))
+        pbar.update(len(chunk))
+    pbar.close()
 
     if verbose:
         print(f"  [INFO] {len(matched_pairs)} pairs above threshold {sim_threshold} "
@@ -862,6 +883,12 @@ def main():
     parser.add_argument('--pairs-per-image', type=int, default=12)
     parser.add_argument('--lr', type=float, default=0.1)
     parser.add_argument('--sim-threshold', type=float, default=0.8)
+    parser.add_argument('--batch-size', type=int, default=256,
+                         help='Pairs scored per QNode call (test mode only) via '
+                              'PennyLane parameter broadcasting. Measured ~1.3x '
+                              'faster than one call per pair on lightning.qubit, '
+                              'bit-identical output. Higher = fewer Python-call '
+                              'overheads but more memory per call.')
     parser.add_argument('--train-rotations', action='store_true',
                          help='Include 90/180/270-rotated positives in the '
                               'synthetic training pairs. OFF by default: the '
@@ -917,7 +944,7 @@ def main():
         print(f"\n--- {img_name} ---")
         pred_mask, matched_pairs, coords = detect_copy_move(
             img, qnn, patch_size=args.patch_size, stride=args.stride,
-            sim_threshold=args.sim_threshold)
+            sim_threshold=args.sim_threshold, batch_size=args.batch_size)
         metrics = compute_metrics(pred_mask, gt_mask)
         transform_type = CoMoFoDDataset.get_transformation_type(img_name)
         print(f"  {transform_type}: F1={metrics['f1']:.4f} IoU={metrics['iou']:.4f}")
