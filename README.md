@@ -133,9 +133,8 @@ that trades spatial precision for the ability to examine the whole image.
 
 ## 🚀 Quick Start (5 Minutes)
 
-### 1. Extract and Open in VS Code
+### 1. Open in VS Code
 ```bash
-unzip cmfd_project.zip
 cd cmfd_project
 code .
 ```
@@ -145,15 +144,23 @@ code .
 bash scripts/setup.sh
 ```
 
-### 3. Run Testing Pipeline
+### 3. Run the Demo
 ```bash
-python code/cmfd_comofod_pipeline.py --dataset-dir ./data/comofod --num-images 5
+cd code
+streamlit run app.py
 ```
+Upload an image, pick an engine in the sidebar (**Pure classical · SIFT+RANSAC**
+or **Pure quantum · swap-test QNN**), and click **Run analysis**. A trained
+QNN checkpoint already ships at `checkpoints_pure/swaptest_qnn_epoch10.npz`,
+so the quantum engine works out of the box — no training required first.
 
-### 4. Check Results
+### 4. Or Evaluate on CoMoFoD from the Command Line
 ```bash
-ls results/
-# Shows: result_*.png files, results.csv, etc.
+python code/cmfd_swaptest_pipeline.py --mode test \
+    --dataset-dir ./data/comofod \
+    --checkpoint ./checkpoints_pure/swaptest_qnn_epoch10.npz \
+    --num-images 5 --output-dir ./results_pure
+cat results_pure/results_pure.csv
 ```
 
 ---
@@ -167,7 +174,15 @@ cmfd_project/
 ├── requirements.txt                       ← Python dependencies
 │
 ├── code/
-│   └── cmfd_comofod_pipeline.py           ← Main code (RUN THIS)
+│   ├── app.py                             ← Streamlit demo (SIFT + pure-QNN engines)
+│   ├── inference.py                       ← Pure-QNN inference wrapper used by app.py
+│   ├── sift_cmfd.py                       ← Classical SIFT+RANSAC baseline engine
+│   ├── cmfd_swaptest_pipeline.py          ← v3 PURE QNN: model, training, CoMoFoD eval
+│   ├── train_split.py                     ← Train/test-split trainer, saves a deployable checkpoint
+│   ├── grip_dataset.py                    ← GRIP/COVERAGE dataset loader (alt. eval sets)
+│   └── test_grip.py                       ← Evaluate the trained QNN on GRIP/COVERAGE
+│
+├── checkpoints_pure/                      ← Trained pure-QNN weights (.npz, per epoch)
 │
 ├── scripts/
 │   └── setup.sh                           ← Auto setup + download
@@ -179,13 +194,10 @@ cmfd_project/
 │
 ├── data/
 │   └── comofod/                           ← Dataset (after download)
-│       ├── COCO/
-│       ├── Forged/
-│       └── Masks/
 │
-└── results/                               ← Output (created after run)
-    ├── result_*.png
-    └── results.csv
+└── results_pure/                          ← Output (created after a --mode test run)
+    ├── *_pred_mask.npy
+    └── results_pure.csv
 ```
 
 ---
@@ -211,161 +223,48 @@ mv data/comofod-copy-move-forgery-detection data/comofod
 
 ---
 
-## 🏃 Running the Pipeline
+## 🏃 Running It
 
-### Basic (5 images, ~25 mins)
+### Demo (both engines, interactive)
 ```bash
-python code/cmfd_comofod_pipeline.py --dataset-dir ./data/comofod --num-images 5
+cd code
+streamlit run app.py
 ```
 
-### Standard (20 images, ~100 mins)
+### Train the pure QNN from scratch
 ```bash
-python code/cmfd_comofod_pipeline.py \
+# self-supervised on synthetic copy-move pairs, train/test split by scene id
+python code/train_split.py --dataset-dir ./data/comofod \
+    --epochs 10 --images-per-epoch 80 --out ./models/cmfd_model.npz
+```
+Or drive `cmfd_swaptest_pipeline.py` directly — this is what produced the
+checkpoints already in `checkpoints_pure/`:
+```bash
+python code/cmfd_swaptest_pipeline.py --mode train \
     --dataset-dir ./data/comofod \
-    --num-images 20 \
-    --stride 4 \
-    --n-qubits 5 \
-    --output-dir ./results
+    --epochs 10 --images-per-epoch 20 --lr 0.05 \
+    --checkpoint-dir ./checkpoints_pure
 ```
 
-### Fast Prototype (3 images, ~15 mins)
+### Evaluate the pure QNN on CoMoFoD
 ```bash
-python code/cmfd_comofod_pipeline.py \
+python code/cmfd_swaptest_pipeline.py --mode test \
     --dataset-dir ./data/comofod \
-    --num-images 3 \
-    --stride 8 \
-    --n-qubits 4 \
-    --output-dir ./results_fast
+    --checkpoint ./checkpoints_pure/swaptest_qnn_epoch10.npz \
+    --num-images 5 --output-dir ./results_pure
 ```
 
----
-
-## 📊 Expected Output
-
-### Console
-```
-================================================================================
-CMFD Testing Pipeline - CoMoFoD Dataset
-PennyLane QNN + Sliding Window + Real Transformations
-================================================================================
-
-[1/6] Loading CoMoFoD dataset...
-[INFO] Found 10800 images in dataset
-
-[2/6] Initializing QNN (5 qubits, 2 layers)...
-[INFO] QNN initialized with 30 parameters
-
-[3/6] Processing 5 test images...
-
---- Image 1/5 ---
-  Transformation: Blur
-  Computing heatmap...
-Sliding window: 100%|████████| 2601/2601 [04:23]
-  Thresholding and cleanup...
-  F1=0.6234, IoU=0.4567, Acc=0.9234
-
---- Image 2/5 ---
-  Transformation: Rotation
-  ...
-  F1=0.4234, IoU=0.2987, Acc=0.8834
-
-================================================================================
-SUMMARY
-================================================================================
-
-Overall metrics (5 images):
-       precision     recall          f1        iou    accuracy
-count        5.0        5.0        5.0        5.0        5.0
-mean      0.5842    0.5634      0.5712    0.3976    0.9034
-std       0.0876    0.0934      0.0876    0.0745    0.0156
-
-Transformation-Based Analysis:
-
-Blur:
-  F1:  0.6234 ± 0.0156
-  IoU: 0.4567 ± 0.0234
-  Count: 1
-
-Rotation:
-  F1:  0.4234 ± 0.0000
-  IoU: 0.2987 ± 0.0000
-  Count: 1
-
-[INFO] Results saved to results.csv
-[INFO] Visualizations in ./results/
-
-✓ Testing complete!
-```
-
-### Generated Files
-```
-results/
-├── original_1_1_1_B_result.png        ← Blur (5 panels: original, heatmap, GT, pred, metrics)
-├── original_1_1_1_G_result.png        ← Gaussian Noise
-├── original_1_1_1_JC_result.png       ← JPEG Compression
-├── original_1_1_1_N_result.png        ← Noise
-├── original_1_1_1_R_result.png        ← Rotation
-├── original_1_1_1_S_result.png        ← Scaling
-└── results.csv                         ← All metrics in table format
-```
-
----
-
-## 💡 Features
-
-✓ **Real CoMoFoD forgeries** with 7 transformation types  
-✓ **Automatic transformation detection** from filename  
-✓ **Per-transformation analysis** (separate F1 for each type)  
-✓ **PennyLane QNN** (5-6 qubits, amplitude encoding)  
-✓ **Sliding window** with proper overlap-averaging  
-✓ **Ground truth masks** (pixel-level, pre-labeled)  
-✓ **Full visualizations** (5-panel PNG per image)  
-✓ **CSV results** for easy analysis  
-✓ **Statistical reporting** (mean ± std by transformation)  
-
----
-
-## 📈 Performance Expectations
-
-**On CoMoFoD real transformations:**
-
-| Transformation | F1 Score | IoU | Difficulty |
-|---|---|---|---|
-| Blur (B) | 0.62 | 0.46 | Easy |
-| Gaussian Noise (G) | 0.59 | 0.41 | Easy |
-| JPEG Compress (JC) | 0.56 | 0.40 | Medium |
-| Noise (N) | 0.54 | 0.38 | Medium |
-| Rotation (R) | 0.42 | 0.30 | Hard |
-| Scaling (S) | 0.46 | 0.32 | Hard |
-| **Overall** | **0.54** | **0.38** | - |
-
-*(Classical CNN: F1 ≈ 0.72 on CASIA; Quantum QNN: F1 ≈ 0.54 on CoMoFoD)*
-
----
-
-## 🔧 Customization
-
-### Adjust QNN Size
+### Evaluate on GRIP / COVERAGE instead of CoMoFoD
 ```bash
-# Smaller/Faster (4 mins/image)
---n-qubits 4 --n-layers 1 --stride 8
-
-# Balanced (5 mins/image)
---n-qubits 5 --n-layers 2 --stride 4
-
-# Larger/Slower (15 mins/image)
---n-qubits 6 --n-layers 3 --stride 2
+python code/test_grip.py \
+    --dataset-dir ./data/grip \
+    --checkpoint ./checkpoints_pure/swaptest_qnn_epoch10.npz \
+    --patch-size 8 --n-layers 3 \
+    --num-images 20 --output-dir ./results_grip
 ```
 
-### Test Specific Images
-```bash
-# Start from image 10, test 20 images
-python code/cmfd_comofod_pipeline.py \
-    --dataset-dir ./data/comofod \
-    --num-images 20 \
-    --start-idx 10 \
-    --output-dir ./results_batch_2
-```
+See the **v3: PURE QNN** section above for what each flag controls, expected
+runtime per image, and why `--stride` must equal `--patch-size`.
 
 ---
 
@@ -373,11 +272,12 @@ python code/cmfd_comofod_pipeline.py \
 
 | Problem | Solution |
 |---|---|
-| "ModuleNotFoundError: pennylane" | `pip install -r requirements.txt` |
-| "Could not find CoMoFoD" | Check: `ls data/comofod/Forged/` has `.jpg` files |
+| "ModuleNotFoundError: pennylane" / "streamlit" / "cv2" | `pip install -r requirements.txt` |
+| "Could not find CoMoFoD" | Check `data/comofod/` has either `Forged/`+`Masks/` or a flat `CoMoFoD_small_v2/` folder |
 | Kaggle auth fails | See docs/SETUP_GUIDE.md for API token setup |
-| Very slow (20+ min/image) | Use `--stride 8 --n-qubits 4` |
-| Out of memory | Use `--num-images 3 --stride 8` |
+| QNN mode very slow (~20 min/image) | Expected — see the cost table in the v3 section above; lower `--img-size` or use the SIFT engine in the demo |
+| "v2 (hybrid) checkpoint" load error | You pointed `--checkpoint` at an old `.npy` file; v3 needs a `.npz` checkpoint, retrain with `--mode train` |
+| Out of memory | Use `--num-images 3` and a smaller `--img-size` |
 
 ---
 
@@ -390,18 +290,10 @@ python code/cmfd_comofod_pipeline.py \
 
 ---
 
-## ✨ Next Steps
-
-1. **Extract this ZIP** in VS Code
-2. **Run**: `bash scripts/setup.sh`
-3. **Test**: `python code/cmfd_comofod_pipeline.py --dataset-dir ./data/comofod --num-images 5`
-4. **Analyze**: `cat results/results.csv`
-5. **Customize**: Modify `--n-qubits`, `--stride` as needed
-
----
-
 ## ❓ Questions?
 
-Check the `docs/` folder for detailed guides, or see comments in `code/cmfd_comofod_pipeline.py`.
+Check the `docs/` folder for detailed guides, or see the module docstrings in
+`code/cmfd_swaptest_pipeline.py`, `code/inference.py`, and `code/sift_cmfd.py`
+— each explains its own design decisions in depth.
 
 Good luck! 🚀
