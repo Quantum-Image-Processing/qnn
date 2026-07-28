@@ -79,7 +79,8 @@ class AnalysisResult:
 class ForgeryDetector:
     def __init__(self, checkpoint: str, n_layers: int = 3,
                  img_size: int = 128, patch_size: int = 8, stride: int = 8,
-                 n_offset_qubits: int = 2, diff_method: str = 'auto'):
+                 n_offset_qubits: int = 2, diff_method: str = 'auto',
+                 batch_size: int = 256):
         """
         stride defaults to patch_size so patches TILE the image. This is a
         correctness requirement, not a speed knob: with stride 16 at 256px
@@ -88,10 +89,18 @@ class ForgeryDetector:
         mean 0.940) because the 2%-area forged region was never sampled.
         img_size dropped 256 -> 128 to keep tiled scoring affordable, since
         exhaustive pair scoring is O(patches^2).
+
+        batch_size: pairs scored per QNode call via PennyLane parameter
+        broadcasting, instead of one call per pair. Measured ~1.3x faster
+        on lightning.qubit with bit-identical output - a real but modest
+        win (lightning still evaluates the batch dimension internally
+        rather than truly vectorizing it), not the main speed lever
+        img_size is; see SwapTestSiameseQNN.similarity for the benchmark.
         """
         self.img_size = img_size
         self.patch_size = patch_size
         self.stride = stride
+        self.batch_size = batch_size
         if stride > patch_size:
             print(f"[WARN] stride ({stride}) > patch_size ({patch_size}): patches do "
                   f"not tile; part of every image will never be examined.")
@@ -126,18 +135,25 @@ class ForgeryDetector:
         coords, states = extract_all_patches(img, self.patch_size, self.stride)
         pairs = generate_all_pairs(coords, min_spatial_dist=self.patch_size)
 
-        # Score every admissible pair with the circuit. This is the whole
-        # detector - what survives the threshold IS the result.
+        # Score every admissible pair with the circuit, batch_size pairs per
+        # QNode call (see ForgeryDetector.__init__ and SwapTestSiameseQNN.
+        # similarity). This is the whole detector - what survives the
+        # threshold IS the result.
         matched = []
         n = len(pairs)
-        for k, (i, j) in enumerate(pairs):
-            yi, xi = coords[i]; yj, xj = coords[j]
-            off = encode_offset(yj - yi, xj - xi, self.img_size)
-            sim = self.qnn.similarity(states[i], states[j], off)
-            if sim >= sim_threshold:
-                matched.append((i, j, sim))
-            if progress is not None and n and (k % 64 == 0):
-                progress(k / n)
+        for start in range(0, n, self.batch_size):
+            chunk = pairs[start:start + self.batch_size]
+            offs = np.array([encode_offset(coords[j][0] - coords[i][0],
+                                            coords[j][1] - coords[i][1], self.img_size)
+                              for (i, j) in chunk])
+            states_a = states[[i for (i, j) in chunk]]
+            states_b = states[[j for (i, j) in chunk]]
+            sims = np.atleast_1d(self.qnn.similarity(states_a, states_b, offs))
+            for (i, j), sim in zip(chunk, sims):
+                if sim >= sim_threshold:
+                    matched.append((i, j, float(sim)))
+            if progress is not None and n:
+                progress(min(start + len(chunk), n) / n)
         if progress is not None:
             progress(1.0)
 
