@@ -97,6 +97,7 @@ import os
 import sys
 import json
 import argparse
+from io import BytesIO
 import numpy as np
 from pathlib import Path
 
@@ -629,6 +630,59 @@ class SwapTestSiameseQNN:
 # "CoMoFoD masks have no patch correspondence" problem)
 # ============================================================================
 
+def _jpeg_roundtrip(patch: np.ndarray, quality: int) -> np.ndarray:
+    """Re-encode a [0,1] float patch through JPEG at `quality` and back -
+    the artifact real CoMoFoD JC-category post-processing leaves."""
+    u8 = np.clip(patch * 255.0, 0, 255).astype(np.uint8)
+    buf = BytesIO()
+    Image.fromarray(u8, mode='L').save(buf, format='JPEG', quality=int(quality))
+    buf.seek(0)
+    return np.asarray(Image.open(buf).convert('L'), dtype=np.float64) / 255.0
+
+
+def _degrade_patch(patch: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """
+    Randomly apply brightness/contrast shift, sensor noise, and/or JPEG
+    re-compression - the artifacts CoMoFoD's BC/CA/NA/JC post-processing
+    categories leave on a real forged region. Without this, a pasted
+    synthetic positive is pixel-identical to its source (see
+    make_synthetic_pairs docstring history), which no real copy-move ever
+    is - training on exact duplicates only teaches "spot an exact copy,"
+    not "spot a duplicate that also got compressed/blended like a real
+    forgery." Each effect is independently a coin flip so plenty of
+    positives stay clean too (real CoMoFoD includes un-post-processed
+    "Raw" forgeries alongside the post-processed categories).
+    """
+    out = patch.astype(np.float64).copy()
+    if rng.random() < 0.6:
+        contrast = rng.uniform(0.85, 1.15)
+        brightness = rng.uniform(-0.06, 0.06)
+        out = np.clip(out * contrast + brightness, 0.0, 1.0)
+    if rng.random() < 0.5:
+        out = np.clip(out + rng.normal(0.0, rng.uniform(0.01, 0.03), out.shape), 0.0, 1.0)
+    if rng.random() < 0.5:
+        out = _jpeg_roundtrip(out, quality=int(rng.integers(35, 90)))
+    return out
+
+
+def _feather_paste(patch: np.ndarray, background: np.ndarray,
+                    rng: np.random.Generator) -> np.ndarray:
+    """
+    Alpha-blend `patch` onto `background` with a soft edge instead of a
+    hard rectangular cut - real copy-move paste boundaries are usually
+    feathered or blurred, not a perfect seam. 30% of positives keep a
+    hard edge, since some real forgeries do too.
+    """
+    if rng.random() < 0.3:
+        return patch
+    h, w = patch.shape
+    feather = max(1, int(round(min(h, w) * rng.uniform(0.08, 0.2))))
+    yy, xx = np.mgrid[0:h, 0:w]
+    dist_to_edge = np.minimum.reduce([yy, xx, h - 1 - yy, w - 1 - xx]).astype(np.float64)
+    mask = np.clip(dist_to_edge / feather, 0.0, 1.0)
+    return mask * patch + (1.0 - mask) * background
+
+
 def make_synthetic_pairs(image: np.ndarray, patch_size: int, n_pos: int = 6, n_neg: int = 6,
                           rng: np.random.Generator = None, rotate: bool = False):
     """
@@ -642,11 +696,31 @@ def make_synthetic_pairs(image: np.ndarray, patch_size: int, n_pos: int = 6, n_n
     in the circuit consumes. Positives get the true (dy, dx) of the
     duplication; negatives get the offset of the two sampled locations.
 
-    Note: prepare_patch_state() is purely local to a patch's own pixel
-    content, so pasting-then-encoding is numerically identical to
-    encoding the rotated source patch directly - relocation alone doesn't
-    add signal without also modeling paste-boundary/blending effects,
-    which this does not do. Carried over honestly from v2.
+    Positives are run through _degrade_patch() and _feather_paste() before
+    being written into the forged copy, so f_b is NOT pixel-identical to
+    f_a's source content the way a bare paste would be - see those two
+    functions for why. This directly targets the "positives were too
+    easy" gap: real CoMoFoD forgeries carry post-processing and blended
+    boundaries that a hard, undegraded paste never reproduces.
+
+    Negatives get the same care, for three reasons found once positives
+    stopped being trivial:
+      - Unlike positives, a naive random (y2, x2) has no separation
+        guarantee from (y1, x1) and can land close enough to overlap -
+        an accidental near-duplicate mislabeled 0, contradicting the
+        positive signal. Negatives now re-roll under the same
+        overlap-avoidance rule positives use.
+      - Only degrading positives makes "looks a bit noisy/JPEG'd" a
+        free giveaway for label 1 regardless of actual content match.
+        Negatives now get _degrade_patch() at the same rate, so
+        degradation carries no label information.
+      - Two fully random patches (e.g. sky vs. brick) are usually
+        trivially different in gross statistics, which risks the model
+        learning "compare average brightness" instead of comparing
+        content. Half of negatives are now "hard": the second location
+        is chosen, among several candidates, to have brightness closest
+        to the first patch's - a different patch that merely looks
+        similar, not an easy outlier.
     """
     rng = rng or np.random.default_rng()
     H, W = image.shape
@@ -656,6 +730,9 @@ def make_synthetic_pairs(image: np.ndarray, patch_size: int, n_pos: int = 6, n_n
         y = rng.integers(0, H - patch_size)
         x = rng.integers(0, W - patch_size)
         return y, x
+
+    def not_overlapping(y1, x1, y2, x2):
+        return not (abs(y2 - y1) < patch_size and abs(x2 - x1) < patch_size)
 
     for _ in range(n_pos):
         y1, x1 = rand_loc()
@@ -677,11 +754,15 @@ def make_synthetic_pairs(image: np.ndarray, patch_size: int, n_pos: int = 6, n_n
             src_patch_rot = src_patch  # guard for non-square edge cases
 
         y2, x2 = rand_loc()
-        while abs(y2 - y1) < patch_size and abs(x2 - x1) < patch_size:
+        while not not_overlapping(y1, x1, y2, x2):
             y2, x2 = rand_loc()
 
+        background = image[y2:y2 + patch_size, x2:x2 + patch_size]
+        pasted = _degrade_patch(src_patch_rot, rng) if rng.random() < 0.8 else src_patch_rot
+        pasted = _feather_paste(pasted, background, rng)
+
         forged = image.copy()
-        forged[y2:y2 + patch_size, x2:x2 + patch_size] = src_patch_rot
+        forged[y2:y2 + patch_size, x2:x2 + patch_size] = pasted
 
         f_a = prepare_patch_state(src_patch)
         f_b = prepare_patch_state(forged[y2:y2 + patch_size, x2:x2 + patch_size])
@@ -690,9 +771,31 @@ def make_synthetic_pairs(image: np.ndarray, patch_size: int, n_pos: int = 6, n_n
 
     for _ in range(n_neg):
         y1, x1 = rand_loc()
-        y2, x2 = rand_loc()
         p1 = image[y1:y1 + patch_size, x1:x1 + patch_size]
+
+        if rng.random() < 0.5:
+            # Hard negative: pick whichever of several candidate locations
+            # has brightness closest to p1's, so the pair looks similar at
+            # a glance despite being genuinely different content.
+            candidates = [rand_loc() for _ in range(8)]
+            candidates = [(y, x) for (y, x) in candidates
+                          if not_overlapping(y1, x1, y, x)] or [rand_loc()]
+            p1_mean = p1.mean()
+            y2, x2 = min(
+                candidates,
+                key=lambda yx: abs(
+                    image[yx[0]:yx[0] + patch_size, yx[1]:yx[1] + patch_size].mean()
+                    - p1_mean))
+        else:
+            y2, x2 = rand_loc()
+            while not not_overlapping(y1, x1, y2, x2):
+                y2, x2 = rand_loc()
+
         p2 = image[y2:y2 + patch_size, x2:x2 + patch_size]
+        # Same degradation rate as positives (see docstring) so noise/JPEG
+        # artifacts stop being a shortcut signal for the label.
+        p2 = _degrade_patch(p2, rng) if rng.random() < 0.8 else p2
+
         f_a = prepare_patch_state(p1)
         f_b = prepare_patch_state(p2)
         off = encode_offset(y2 - y1, x2 - x1, H)
