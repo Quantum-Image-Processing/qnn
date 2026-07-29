@@ -122,11 +122,20 @@ that trades spatial precision for the ability to examine the whole image.
   2%-area forged region contains only ~4 patches, and copy-move needs a matched
   *pair*, so the achievable F1 ceiling on small forgeries is low regardless of
   the model. Raise `--img-size` to improve this, at O(N²) cost.
-- **Training positives may be too easy.** Synthetic positives are pixel-identical
-  copies, so training loss reached ~0.047 in the first epoch and barely moved
-  after. Real CoMoFoD forgeries carry JPEG and paste-boundary artifacts that
-  this signal does not model, so the trained similarity may not transfer.
-  This is a data-realism gap, separate from the classical-vs-quantum question.
+- **Training positives were too easy (mitigated, not eliminated).** The
+  checkpoints in `checkpoints_pure/` were trained when synthetic positives
+  were pixel-identical copies, which is why training loss reached ~0.047 in
+  the first epoch and barely moved after. `make_synthetic_pairs()` now runs
+  positives through `_degrade_patch()` (random brightness/contrast/noise/JPEG,
+  mirroring CoMoFoD's real BC/CA/NA/JC post-processing) and `_feather_paste()`
+  (soft paste boundary instead of a hard seam) before writing them in, so a
+  fresh training run no longer sees exact duplicates as its only positive
+  signal. **This does not retroactively improve the existing checkpoints** -
+  they were trained on the old, easier pairs. Re-run `--mode train` (or
+  `train_split.py`) to get a checkpoint that benefits, and there's no
+  accuracy guarantee that it scores higher on real CoMoFoD forgeries -
+  that's an empirical question to re-evaluate after retraining, not
+  something fixed by construction.
 - Purity costs accuracy here; the report should say so rather than hide it.
 
 ---
