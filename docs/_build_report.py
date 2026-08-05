@@ -41,48 +41,42 @@ def to_b64(fig):
     plt.close(fig)
     return base64.b64encode(buf.getvalue()).decode()
 
-# ============ CHART 1: precision-recall gap (the flooding signature) ========
-imgs   = ['COVERAGE\n1t', 'COVERAGE\n10t', 'COVERAGE\n100t', 'CoMoFoD\n001_F', 'CoMoFoD\n050_F']
-recall = [1.000, 1.000, 1.000, 0.806, 1.000]
-prec   = [0.269, 0.055, 0.337, 0.017, 0.111]
+# ==== CHART 1: the ablation - quantum vs classical similarity (200 pairs) ====
+methods = ['Classical\ncosine sim.', 'Raw overlap\n|<a|b>|² ', 'Circuit\nUNTRAINED', 'Circuit\nTRAINED']
+aucs    = [0.887, 0.887, 0.880, 0.883]
+cols    = [MUTED, MUTED, BLUE, ORANGE]
 
-fig, ax = plt.subplots(figsize=(7.6, 3.5))
-x = range(len(imgs)); w = 0.38
-b1 = ax.bar([i - w/2 for i in x], recall, w, label='Recall', color=BLUE, zorder=3)
-b2 = ax.bar([i + w/2 for i in x], prec,   w, label='Precision', color=ORANGE, zorder=3)
+fig, ax = plt.subplots(figsize=(7.6, 3.4))
+x = range(len(methods))
+bars = ax.bar(x, aucs, 0.55, color=cols, zorder=3)
 style(ax)
-ax.set_ylim(0, 1.12); ax.yaxis.set_major_locator(MultipleLocator(0.2))
-ax.set_xticks(list(x)); ax.set_xticklabels(imgs, fontsize=9.5)
-ax.set_ylabel('score')
-ax.set_title('Recall is near-perfect while Precision collapses — the over-detection signature',
+ax.set_ylim(0.5, 0.95); ax.yaxis.set_major_locator(MultipleLocator(0.1))
+ax.axhline(0.5, color=BASELINE, lw=1, ls='--', zorder=2)
+ax.set_xticks(list(x)); ax.set_xticklabels(methods, fontsize=9.5)
+ax.set_ylabel('AUC (positives vs negatives)')
+ax.set_title('No quantum advantage: the circuit does not beat a classical dot product',
              fontsize=11, color=INK, pad=10, loc='left')
-for bars, vals in ((b1, recall), (b2, prec)):
-    for r, v in zip(bars, vals):
-        ax.text(r.get_x()+r.get_width()/2, v+0.02, f'{v:.2f}',
-                ha='center', va='bottom', fontsize=8.5, color=INK2)
-ax.legend(frameon=False, loc='upper right', fontsize=9.5, ncol=2)
+for r, v in zip(bars, aucs):
+    ax.text(r.get_x()+r.get_width()/2, v+0.006, f'{v:.3f}',
+            ha='center', va='bottom', fontsize=9, color=INK2)
 CHART1 = to_b64(fig)
 
-# ============ CHART 2: offset filter de-flooding (pairs kept) ================
-imgs2  = ['1t', '10t', '100t']
-before = [7984, 2466, 2001]
-after  = [229, 43, 86]
+# ==== CHART 2: detection vs the trivial baseline, 8 distinct CoMoFoD scenes ==
+scenes  = ['001', '002', '003', '004', '005', '006', '007', '008']
+bestf1  = [0.0322, 0.1063, 0.0373, 0.0223, 0.1396, 0.2620, 0.0441, 0.0068]
+trivial = [0.0322, 0.0816, 0.0345, 0.0220, 0.1396, 0.2620, 0.0398, 0.0051]
 
-fig, ax = plt.subplots(figsize=(7.6, 3.3))
-x = range(len(imgs2)); w = 0.38
-b1 = ax.bar([i - w/2 for i in x], before, w, label='Before tuning (thr 0.8, votes 3)', color=BLUE, zorder=3)
-b2 = ax.bar([i + w/2 for i in x], after,  w, label='After tuning (thr 0.92, votes 8)', color=ORANGE, zorder=3)
+fig, ax = plt.subplots(figsize=(7.6, 3.4))
+x = range(len(scenes)); w = 0.38
+b1 = ax.bar([i - w/2 for i in x], bestf1,  w, label='Best achievable F1 (oracle threshold)', color=BLUE, zorder=3)
+b2 = ax.bar([i + w/2 for i in x], trivial, w, label='"Mark every pixel forged" baseline', color=BASELINE, zorder=3)
 style(ax)
-ax.set_ylim(0, 8800)
-ax.set_xticks(list(x)); ax.set_xticklabels([f'COVERAGE {i}' for i in imgs2], fontsize=9.5)
-ax.set_ylabel('patch pairs kept as forged')
-ax.set_title('Tightening parameters cuts surviving false matches by ~95%',
+ax.set_ylim(0, 0.30)
+ax.set_xticks(list(x)); ax.set_xticklabels([f'scene {s}' for s in scenes], fontsize=9)
+ax.set_ylabel('F1')
+ax.set_title('Detection is indistinguishable from marking the whole image forged',
              fontsize=11, color=INK, pad=10, loc='left')
-for bars, vals in ((b1, before), (b2, after)):
-    for r, v in zip(bars, vals):
-        ax.text(r.get_x()+r.get_width()/2, v+90, f'{v:,}',
-                ha='center', va='bottom', fontsize=8.5, color=INK2)
-ax.legend(frameon=False, loc='upper right', fontsize=9)
+ax.legend(frameon=False, loc='upper left', fontsize=9)
 CHART2 = to_b64(fig)
 
 # ============================ HTML =========================================
@@ -150,12 +144,22 @@ patch descriptor with a <b>Siamese swap-test quantum neural network (QNN)</b> th
 similarity score between two image patches, followed by a spatial offset-consistency
 filter that keeps only genuine duplications.</p>
 <div class="callout red">
-  <b>Headline finding.</b> The infrastructure (data loading, patch extraction, QNN similarity,
-  metrics, multi-dataset evaluation) is <b>sound and runs end-to-end</b>. However, the model
-  currently <b>over-detects severely</b> &mdash; it flags 50&ndash;97% of each test image as forged.
-  Consequently the previously-remembered &ldquo;~80%&rdquo; figure was <b>recall, not accuracy</b>; true
-  pixel accuracy on those samples is ~3&ndash;12%, and localization quality (F1/IoU) is low.
-  The remaining work is <b>detection quality</b>, not plumbing.
+  <b>Headline finding.</b> The pipeline is a genuine end-to-end quantum model, and it does not work
+  as a detector. Both halves of that sentence are measured, not asserted:
+  <ul style="margin:6pt 0 0 0">
+    <li>The trained circuit scores <b>AUC 0.883</b> against <b>0.887</b> for a parameter-free classical
+        cosine similarity &mdash; <b>no quantum advantage</b>, at ~36&nbsp;ms/pair versus microseconds.</li>
+    <li>Training moves AUC by <b>0.003</b> (0.880 untrained &rarr; 0.883 trained). The 58 rotation angles
+        influence the output <i>less</i> than the choice of input image does.</li>
+    <li>Best achievable detection is <b>F1 0.0813</b> against a <b>0.0771</b> baseline of marking every
+        pixel forged &mdash; and that is with an oracle per-image threshold.</li>
+  </ul>
+</div>
+<div class="callout red">
+  <b>Root cause.</b> The classical offset-consistency vote removed in v3 was not scaffolding around
+  the quantum model &mdash; <b>it was the component performing the detection</b>. Patch similarity alone
+  drowns in natural self-similarity; a duplicated region is a small signal among tens of thousands
+  of genuinely similar patch pairs. See &sect;7.
 </div>
 <div class="callout red">
   <b>v3 finding &mdash; the reported non-convergence was a data bug, not a model bug.</b>
@@ -256,97 +260,134 @@ forged&rdquo; scores ~90&ndash;98% accuracy while detecting <b>zero</b> forgerie
 the pair that explains F1; never headline accuracy. IoU is literally the metric that measures the
 stated goal (exact forged area).</div>
 
-<h2 class="pb">6. Results <span style="font-weight:400;font-size:0.7em">(v2 hybrid baseline &mdash; v3 re-evaluation pending)</span></h2>
+<h2 class="pb">6. Results &mdash; pure QNN</h2>
+<p>Three questions were tested separately, because they have different answers:
+does the model <i>learn</i>, does the quantum circuit <i>beat a classical equivalent</i>, and does
+the system <i>detect copy-move forgery</i>.</p>
 
-<h3>6.1 COVERAGE &mdash; loose parameters (threshold 0.8, votes 3, 384&nbsp;px)</h3>
+<h3>6.1 Does training improve the model? No.</h3>
+<p>Two training runs, both on the pure architecture:</p>
 <table class="avoid-break">
-  <tr><th>Image</th><th class="n">Accuracy</th><th class="n">Precision</th><th class="n">Recall</th><th class="n">F1</th><th class="n">IoU</th></tr>
-  <tr><td>COVERAGE 1t</td><td class="n">0.277</td><td class="n">0.269</td><td class="n">1.000</td><td class="n">0.424</td><td class="n">0.269</td></tr>
-  <tr><td>COVERAGE 10t</td><td class="n">0.092</td><td class="n">0.055</td><td class="n">1.000</td><td class="n">0.105</td><td class="n">0.055</td></tr>
-  <tr><td>COVERAGE 100t</td><td class="n">0.344</td><td class="n">0.337</td><td class="n">1.000</td><td class="n">0.505</td><td class="n">0.337</td></tr>
-  <tr class="tot"><td>Mean</td><td class="n">0.238</td><td class="n">0.220</td><td class="n">1.000</td><td class="n">0.345</td><td class="n">0.221</td></tr>
+  <tr><th>Run</th><th>Synthetic positives</th><th>Loss trajectory</th><th>Interpretation</th></tr>
+  <tr><td>A (10 epochs &times; 80 img)</td><td>pixel-identical copies</td><td>0.047 at epoch 1, flat thereafter</td><td>Nothing to learn &mdash; a swap test returns ~1.0 for identical states with no trained parameters, so the model starts at the answer</td></tr>
+  <tr><td>B (11 epochs &times; 200 img)</td><td>degraded + feathered</td><td>0.158 &rarr; 0.178, no downward trend</td><td>A real loss surface, but the weights cannot descend it</td></tr>
+</table>
+<p>Run B was tested with both plain gradient descent and Adam at identical settings and seed. The two
+trajectories agreed to within 0.002 per epoch and final AUC differed by 0.005 &mdash; so the optimizer
+is not the limitation.</p>
+<div class="callout red"><b>Why the weights cannot help.</b> Varying the 58 rotation angles across
+independent random draws changes a pair's score by &sigma;&nbsp;=&nbsp;0.117. Varying the <i>input data</i>
+changes it by &sigma;&nbsp;=&nbsp;0.138. The parameters inject almost as much variation as the image
+content does &mdash; they behave closer to noise than to a learned function.</div>
+
+<h3>6.2 Does the quantum circuit beat a classical equivalent? No.</h3>
+<p>Measured on 200 synthetic pairs (100 positive, 100 negative), reporting AUC &mdash; the probability
+that a true duplicate outscores a non-duplicate, where 0.5 is chance:</p>
+<table class="avoid-break">
+  <tr><th>Scorer</th><th class="n">AUC</th><th>Trainable parameters</th></tr>
+  <tr><td>Classical cosine similarity</td><td class="n">0.887</td><td>0</td></tr>
+  <tr><td>Raw state overlap |&lang;f<sub>A</sub>|f<sub>B</sub>&rang;|&sup2;</td><td class="n">0.887</td><td>0</td></tr>
+  <tr><td>Swap-test circuit, untrained</td><td class="n">0.880</td><td>58</td></tr>
+  <tr class="tot"><td>Swap-test circuit, trained</td><td class="n">0.883</td><td>58</td></tr>
 </table>
 <figure><img src="data:image/png;base64,__CHART1__">
-<figcaption>Figure 1. Across every test image, recall is ~1.0 while precision is far lower &mdash; the model
-finds the forgery only because it flags almost the whole image. (COVERAGE at loose parameters;
-CoMoFoD from saved masks, &sect;6.3.)</figcaption></figure>
+<figcaption>Figure 1. The trained quantum circuit does not outperform a parameter-free classical dot
+product. Training moves AUC by 0.003; the gap to classical cosine similarity is &minus;0.004.</figcaption></figure>
+<p><b>This is structural, not a tuning failure.</b> A swap test measures
+|&lang;&psi;<sub>A</sub>|&psi;<sub>B</sub>&rang;|&sup2;. On amplitude-encoded raw pixels that quantity
+<i>is</i> squared cosine similarity &mdash; fixed and parameter-free. The data re-uploading layers exist
+only to escape the provable degeneracy described in &sect;3, and they buy trainability by scrambling
+the encoded states, which can only move the measured overlap away from the informative one. The
+architecture therefore faces a genuine dilemma: <b>untrainable and accurate, or trainable and
+slightly worse.</b></p>
 
-<h3>6.2 Effect of tightening parameters (COVERAGE, threshold 0.92, votes 8, 256&nbsp;px)</h3>
+<h3>6.3 Does it detect copy-move forgery? No.</h3>
+<p>Eight <b>distinct</b> CoMoFoD scenes, 128&nbsp;px tiled (patch 8, stride 8, full coverage), scored
+exhaustively. Both columns favour the detector: the scorer is the best available (&sect;6.2) and the
+threshold is chosen <i>per image</i> with knowledge of the ground truth &mdash; an oracle no real
+deployment gets.</p>
 <table class="avoid-break">
-  <tr><th>Image</th><th class="n">Precision</th><th class="n">Recall</th><th class="n">F1</th><th class="n">IoU</th></tr>
-  <tr><td>COVERAGE 1t</td><td class="n">0.308</td><td class="n">0.994</td><td class="n">0.471</td><td class="n">0.308</td></tr>
-  <tr><td>COVERAGE 10t</td><td class="n">0.102</td><td class="n">1.000</td><td class="n">0.185</td><td class="n">0.102</td></tr>
-  <tr><td>COVERAGE 100t</td><td class="n">0.259</td><td class="n">0.420</td><td class="n">0.320</td><td class="n">0.191</td></tr>
-  <tr class="tot"><td>Mean</td><td class="n">0.223</td><td class="n">0.805</td><td class="n">0.325</td><td class="n">0.200</td></tr>
+  <tr><th>Scene</th><th class="n">Forged area</th><th class="n">Best achievable F1</th><th class="n">&ldquo;Mark every pixel forged&rdquo; F1</th></tr>
+  <tr><td>001_F</td><td class="n">1.6%</td><td class="n">0.0322</td><td class="n">0.0322</td></tr>
+  <tr><td>002_F</td><td class="n">4.3%</td><td class="n">0.1063</td><td class="n">0.0816</td></tr>
+  <tr><td>003_F</td><td class="n">1.8%</td><td class="n">0.0373</td><td class="n">0.0345</td></tr>
+  <tr><td>004_F</td><td class="n">1.1%</td><td class="n">0.0223</td><td class="n">0.0220</td></tr>
+  <tr><td>005_F</td><td class="n">7.5%</td><td class="n">0.1396</td><td class="n">0.1396</td></tr>
+  <tr><td>006_F</td><td class="n">15.1%</td><td class="n">0.2620</td><td class="n">0.2620</td></tr>
+  <tr><td>007_F</td><td class="n">2.0%</td><td class="n">0.0441</td><td class="n">0.0398</td></tr>
+  <tr><td>008_F</td><td class="n">0.3%</td><td class="n">0.0068</td><td class="n">0.0051</td></tr>
+  <tr class="tot"><td>Mean</td><td class="n">&mdash;</td><td class="n">0.0813</td><td class="n">0.0771</td></tr>
 </table>
 <figure><img src="data:image/png;base64,__CHART2__">
-<figcaption>Figure 2. The mechanism improves sharply: the offset-consistency filter now removes ~95% of
-candidate matches (before &rarr; after: 7,984&rarr;229, 2,466&rarr;43, 2,001&rarr;86). Mean F1 looks flat only
-because image 100t swung from &ldquo;flag everything&rdquo; (recall 1.0) to under-detecting (recall 0.42).</figcaption></figure>
+<figcaption>Figure 2. Best achievable F1 tracks the trivial baseline. On scenes 001, 005 and 006 the
+optimal threshold is the lowest one tried, keeping all 32,640 pairs &mdash; literally the
+&ldquo;mark everything&rdquo; solution.</figcaption></figure>
 
-<h3>6.3 CoMoFoD &mdash; recomputed from saved prediction masks</h3>
-<p>No CoMoFoD metrics were previously persisted; the two masks below were recovered from an
-earlier run (loose parameters) and re-scored against ground truth.</p>
+<h2 class="pb">7. Key Finding &mdash; the classical vote was doing the detection</h2>
+<div class="callout red"><b>Mean best-case F1 is 0.0813 against a trivial baseline of 0.0771.</b>
+Stripped of every classical stage, the system does not detect copy-move forgery. It is
+statistically indistinguishable from marking the entire image as forged.</div>
+<p><b>Mechanism.</b> Patch similarity alone cannot identify duplication. In any natural photograph
+tens of thousands of 8&times;8 patch pairs are genuinely similar &mdash; sky, foliage, brickwork, smooth
+gradients. A copied region is a small signal inside that flood, and a per-pair similarity score has
+no way to tell a duplicate from a coincidental look-alike.</p>
+<p>The offset-consistency vote removed in v3 existed precisely to solve this: a genuine duplication
+produces many pairs sharing <i>one</i> (dy,&nbsp;dx) offset, whereas coincidental matches scatter
+across all offsets. It was not scaffolding around the quantum model &mdash; <b>it was the component
+performing the detection.</b></p>
+<p>The in-circuit offset register (&sect;3) cannot substitute for it, and the reason is structural
+rather than incidental: offset consistency is a <b>global property of the pair ensemble</b>
+(&ldquo;many pairs agree on one offset&rdquo;), and a circuit that sees one pair at a time cannot observe
+clustering it is never shown. A faithful quantum replacement needs quantum counting or amplitude
+estimation across all pairs simultaneously, which requires QRAM and is not simulable at this
+scale.</p>
+
+<h2>8. What was established</h2>
 <table class="avoid-break">
-  <tr><th>Image</th><th class="n">Accuracy</th><th class="n">Precision</th><th class="n">Recall</th><th class="n">F1</th><th class="n">IoU</th><th class="n">Forged&nbsp;area</th></tr>
-  <tr><td>001_F</td><td class="n">0.030</td><td class="n">0.017</td><td class="n">0.806</td><td class="n">0.032</td><td class="n">0.017</td><td class="n">2.0%</td></tr>
-  <tr><td>050_F_BC1</td><td class="n">0.125</td><td class="n">0.111</td><td class="n">1.000</td><td class="n">0.200</td><td class="n">0.111</td><td class="n">10.9%</td></tr>
+  <tr><th style="width:44%">Claim</th><th style="width:12%">Verdict</th><th>Evidence</th></tr>
+  <tr><td>The pipeline is a pure QNN</td><td><span class="pill done">TRUE</span></td><td>No classical stage in the decision path; only trainable parameters are circuit rotation angles (&sect;3)</td></tr>
+  <tr><td>The re-uploading ansatz is non-degenerate</td><td><span class="pill done">TRUE</span></td><td>Gradient norm ~1.2e-2 vs ~1e-16 for embedding + tied unitary</td></tr>
+  <tr><td>The quantum model learns from data</td><td><span class="pill no">FALSE</span></td><td>AUC 0.880 untrained &rarr; 0.883 trained; weight leverage below data variance (&sect;6.1)</td></tr>
+  <tr><td>The quantum model beats a classical baseline</td><td><span class="pill no">FALSE</span></td><td>0.883 vs 0.887 for cosine similarity, at ~36&nbsp;ms/pair vs microseconds (&sect;6.2)</td></tr>
+  <tr><td>The system detects copy-move forgery</td><td><span class="pill no">FALSE</span></td><td>F1 0.0813 vs 0.0771 trivial baseline, with an oracle threshold (&sect;6.3)</td></tr>
 </table>
-<div class="callout red"><b>This resolves the &ldquo;80%&rdquo; question.</b> Image 001_F scored <b>recall 0.806</b> &mdash; the figure
-in memory &mdash; but with <b>precision 0.017</b> and <b>accuracy 0.030</b>, because ~97% of the image was
-flagged (63,346 false-positive pixels out of 65,536). CoMoFoD floods exactly like COVERAGE, so the
-over-detection is a <b>model/threshold problem, not a dataset-specific one</b>.</div>
 
-<h2 class="pb">7. Key Finding &mdash; systemic over-detection</h2>
-<p>The predicted mask covers most of each image. The diagnostic signature is consistent:
-<b>recall &asymp; 1.0, precision near the forged-area base rate</b>. The offset-consistency filter, which
-is supposed to suppress coincidental matches, barely rejects anything at loose thresholds
-(e.g. 9,734&rarr;7,984 pairs). On self-similar texture, false matches cluster into offset bins just
-like true ones, so they survive.</p>
-<p><b>Two compounding causes:</b> (1) the DCT+histogram descriptor is weak &mdash; it cannot separate a
-true duplicate from a genuinely similar region; (2) thresholds/resolution were not tuned for the
-test conditions. Tightening parameters (&sect;6.2) confirms the mechanism is fixable &mdash; surviving
-false matches dropped ~95% &mdash; but precision remains low, pointing at the descriptor as the deeper
-bottleneck.</p>
-
-<h2>8. Gap Analysis &mdash; distance to the final goal</h2>
-<table class="avoid-break">
-  <tr><th style="width:38%">Capability</th><th style="width:14%">Status</th><th>Reality</th></tr>
-  <tr><td>1. Input any image + preprocess</td><td><span class="pill done">DONE</span></td><td>Loaders + patch extraction work on any image/dataset</td></tr>
-  <tr><td>2. Image-level &ldquo;forged: yes/no&rdquo;</td><td><span class="pill no">NOT BUILT</span></td><td>Detector always returns a mask; nothing decides &ldquo;authentic&rdquo;. No classifier head</td></tr>
-  <tr><td>3. Localization output format (box / heatmap)</td><td><span class="pill half">HALF</span></td><td>Produces a binary mask; converting to a box/heatmap is trivial (~10 lines)</td></tr>
-  <tr><td>4. Localization accuracy (exact edge/area)</td><td><span class="pill no">NOT MET</span></td><td>Floods 50&ndash;97% of the image (precision 0.05&ndash;0.34) &mdash; the core unsolved problem</td></tr>
-</table>
-<div class="callout"><b>Overall &asymp; 35% of a usable output.</b> Scaffolding is ~60&ndash;70% built, but the parts that
-make it <i>a detector</i> &mdash; discriminating forged-vs-clean and localizing precisely &mdash; are the hard
-remaining work. The gap is detection <i>quality</i>, not output formatting.</div>
-
-<h2>9. Recommendations</h2>
-<ul>
-  <li><b>Datasets:</b> keep training on <b>synthetic</b> pairs (mandatory); report headline metrics on
-      <b>CoMoFoD</b>; use <b>COVERAGE</b> only as a stress test.</li>
-  <li><b>COVERAGE &mdash; keep it.</b> ~142&nbsp;MB extracted, the loader reads it, and a second dataset
-      strengthens the report. Optionally delete only the 142&nbsp;MB download zip
-      (<code>OneDrive_1_7-26-2026.zip</code>) to reclaim space.</li>
-  <li><b>Metrics:</b> report F1 + IoU (with precision/recall); drop accuracy from headline claims.</li>
-</ul>
-
-<h2>10. Roadmap &mdash; next steps</h2>
+<h2>9. Interpretation</h2>
+<p>This is a <b>negative result with an identified mechanism</b>, which is a stronger scientific
+outcome than an unverified claim of quantum advantage. The contribution is not a working detector;
+it is a controlled demonstration of <i>which</i> component of a quantum-assisted CMFD pipeline was
+carrying the detection, established by removing every classical stage and measuring what remains.</p>
+<p>Three findings generalise beyond this project:</p>
 <ol>
-  <li><b>Establish an honest baseline</b> &mdash; run a 20&ndash;50 image CoMoFoD batch with tuned parameters
-      and record mean F1/IoU. (Nothing trustworthy exists yet.)</li>
-  <li><b>De-flood localization</b> &mdash; tune <code>sim-threshold</code> / <code>min-offset-votes</code>;
-      strengthen the offset filter (e.g. RANSAC on offsets); if precision still stalls, replace/augment
-      the descriptor with a rotation/scale-invariant feature (e.g. Zernike moments).</li>
-  <li><b>Add the image-level decision</b> &mdash; derive forged/authentic from the offset-consistent
-      matched area, calibrated on authentic images to bound false positives.</li>
-  <li><b>Ablation</b> &mdash; confirm the swap-test QNN beats a classical similarity on the same features;
-      otherwise justify the quantum component explicitly.</li>
-  <li><b>Final output format</b> &mdash; convert the mask to a bounding box (connected components) or a
-      similarity heatmap. Trivial, and correctly done last.</li>
+  <li><b>A swap test on amplitude-encoded data is a fixed similarity measure.</b> Any variational
+      structure wrapped around it either cancels (degenerate, zero gradient) or perturbs the encoding
+      away from the quantity that carried the signal. Trainability and fidelity are in tension by
+      construction, not by implementation choice.</li>
+  <li><b>Self-supervised pair synthesis silently determines what is learnable.</b> Two separate label-noise
+      bugs &mdash; rotated positives, and feathering applied to patch-sized pastes &mdash; each created targets
+      the architecture provably could not represent, and each produced a loss curve that looked like
+      model failure rather than data failure.</li>
+  <li><b>Per-pair scoring cannot express ensemble-level evidence.</b> Copy-move detection depends on
+      agreement <i>across</i> matches, which is invisible to any model evaluating one pair in isolation.</li>
 </ol>
-<div class="callout"><b>Single most important next action:</b> steps 1&ndash;2 &mdash; get a real CoMoFoD number, then
-kill the over-detection. Everything else builds on that.</div>
+
+<h2>10. Future work</h2>
+<ol>
+  <li><b>Quantum offset consistency</b> &mdash; the honest replacement for the classical vote is quantum
+      counting / amplitude estimation over a pair-index register, requiring QRAM to hold all patches
+      in superposition. This is the single change that would make a pure quantum detector viable, and
+      it is out of reach of statevector simulation at useful image sizes.</li>
+  <li><b>Rotation invariance</b> &mdash; add a d&theta; component to the offset register. A rot90 duplicate
+      currently scores ~0.01 where an exact copy scores ~1.0, so rotated CoMoFoD forgeries are missed
+      entirely.</li>
+  <li><b>Larger working resolution</b> &mdash; at 128&nbsp;px a 2%-area forgery spans only ~4 patches, and
+      copy-move requires a matched <i>pair</i>. Exhaustive scoring is O(N&sup2;), so 256&nbsp;px costs
+      ~5&nbsp;h/image against ~20&nbsp;min at 128&nbsp;px.</li>
+  <li><b>Grover-based candidate search</b> &mdash; would restore the O(&radic;N) advantage lost when the
+      classical prefilter was removed. Same QRAM prerequisite as (1).</li>
+</ol>
+<div class="callout"><b>Honest summary.</b> The architecture is correct, complete, and measured. It is
+not a forgery detector, and the measurements above identify exactly why.</div>
 
 <h2 class="pb">Appendix A &mdash; exact run configurations</h2>
 <pre>COVERAGE, loose (&sect;6.1):

@@ -31,6 +31,9 @@ checkpoints*/
 !checkpoints_pure/
 !checkpoints_pure/*.npz
 !checkpoints_pure/history.json
+# split.json records which scene ids are held out for evaluation - without it
+# a collaborator cannot reproduce an honest train/test separation.
+!checkpoints_pure/split.json
 
 # ─── OS / editor junk ───
 .DS_Store
