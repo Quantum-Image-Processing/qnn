@@ -53,6 +53,12 @@ def main():
                          'log2(patch_size^2): 8->6q (15 wires), 16->8q (19 wires, '
                          '~23x slower per pair).')
     ap.add_argument('--lr', type=float, default=0.1)
+    ap.add_argument('--optimizer', type=str, default='adam', choices=['adam', 'gd'],
+                    help="'adam' (default) fixes the flat/oscillating training-loss "
+                         "curves 'gd' produced (see logs/train_full.log).")
+    ap.add_argument('--val-images', type=int, default=4,
+                    help='Held-out images/epoch for a validation-loss readout '
+                         '(0 disables). Not used for gradient updates.')
     ap.add_argument('--seed', type=int, default=42)
     ap.add_argument('--out', default='../models/cmfd_model.npz')
     ap.add_argument('--checkpoint-dir', default='../models/checkpoints')
@@ -92,7 +98,8 @@ def main():
     train(qnn, ds, epochs=args.epochs, images_per_epoch=args.images_per_epoch,
           pairs_per_image=args.pairs_per_image, patch_size=args.patch_size,
           lr=args.lr, checkpoint_dir=args.checkpoint_dir, seed=args.seed,
-          rotate=args.train_rotations)
+          rotate=args.train_rotations, optimizer=args.optimizer,
+          val_images=args.val_images)
 
     qnn.save(out)
     print(f"[DONE] saved deployable model -> {out}")

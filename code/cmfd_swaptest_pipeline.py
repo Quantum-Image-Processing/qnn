@@ -813,18 +813,68 @@ def make_synthetic_pairs(image: np.ndarray, patch_size: int, n_pos: int = 6, n_n
 def train(qnn: SwapTestSiameseQNN, dataset: CoMoFoDDataset, epochs: int = 10,
           images_per_epoch: int = 20, pairs_per_image: int = 12, patch_size: int = 16,
           lr: float = 0.1, checkpoint_dir: str = './checkpoints', seed: int = 42,
-          rotate: bool = False):
+          rotate: bool = False, optimizer: str = 'adam', val_images: int = 4):
     """
     Both trainable tensors are circuit rotation angles - `weights` (the
     tied re-uploading ansatz) and `offset_weights` (the offset register
     and its readout coupling). There is no classical trainable parameter
     anywhere, which is what makes this a pure QNN rather than a hybrid.
+
+    optimizer: 'adam' (default) uses per-parameter adaptive step sizes.
+        The original 'gd' (plain qml.GradientDescentOptimizer with a fixed
+        step) is what produced the flat/oscillating loss curves in
+        logs/train_full.log and checkpoints_pure/history.json (0.033-0.056,
+        no downward trend over 10 epochs) - a fixed step on a noisy
+        variational loss landscape overshoots instead of settling. Kept
+        as an option for comparison, not because it is expected to win.
+    val_images: number of held-out images per epoch (drawn from a val_rng
+        seeded independently of the training rng, so it never overlaps
+        the training draw) used to report a validation loss - NOT used
+        for gradient updates. Training loss alone is too noisy to pick a
+        checkpoint by (checkpoints_pure/history.json: epoch 9's training
+        loss beat epoch 10's), so this gives an independent signal. Set
+        to 0 to disable (matches the old behaviour exactly).
+
+    The per-image cost is now ONE batched circuit call over the whole
+    `pairs_per_image` batch (PennyLane parameter broadcasting - the same
+    mechanism SwapTestSiameseQNN.similarity already uses at inference)
+    instead of a Python loop issuing one circuit call per pair. Same
+    computation, far fewer QNode dispatches per gradient step.
     """
     Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
-    opt = qml.GradientDescentOptimizer(stepsize=lr)
+    if optimizer == 'adam':
+        opt = qml.AdamOptimizer(stepsize=lr)
+    elif optimizer == 'gd':
+        opt = qml.GradientDescentOptimizer(stepsize=lr)
+    else:
+        raise ValueError(f"Unknown optimizer '{optimizer}', expected 'adam' or 'gd'")
     rng = np.random.default_rng(seed)
+    val_rng = np.random.default_rng(seed + 999)  # disjoint stream from the training rng
 
-    history = []
+    def batched_cost(weights, offset_weights, batch):
+        states_a = pnp.array([b[0] for b in batch])
+        states_b = pnp.array([b[1] for b in batch])
+        offs = pnp.array([b[2] for b in batch])
+        labels = pnp.array([b[3] for b in batch])
+        preds = qnn.qnode(states_a, states_b, offs, weights, offset_weights)
+        return pnp.mean((preds - labels) ** 2)
+
+    def eval_val_loss():
+        if not val_images:
+            return None
+        idxs = val_rng.integers(0, len(dataset.original_files), size=val_images)
+        losses = []
+        for img_idx in idxs:
+            image = dataset.get_training_image(int(img_idx))
+            n_pos = pairs_per_image // 2
+            batch = make_synthetic_pairs(image, patch_size, n_pos=n_pos,
+                                         n_neg=pairs_per_image - n_pos,
+                                         rng=val_rng, rotate=rotate)
+            losses.append(float(batched_cost(qnn.weights, qnn.offset_weights, batch)))
+        return float(np.mean(losses))
+
+    train_history = []
+    val_history = []
     for epoch in range(epochs):
         epoch_losses = []
         img_indices = rng.integers(0, len(dataset.original_files), size=images_per_epoch)
@@ -838,11 +888,7 @@ def train(qnn: SwapTestSiameseQNN, dataset: CoMoFoDDataset, epochs: int = 10,
                                          rng=rng, rotate=rotate)
 
             def cost(weights, offset_weights, batch=batch):
-                total = 0.0
-                for f_a, f_b, off, label in batch:
-                    pred = qnn.qnode(f_a, f_b, off, weights, offset_weights)
-                    total = total + (pred - label) ** 2
-                return total / len(batch)
+                return batched_cost(weights, offset_weights, batch)
 
             (qnn.weights, qnn.offset_weights), loss_val = opt.step_and_cost(
                 cost, qnn.weights, qnn.offset_weights)
@@ -851,21 +897,79 @@ def train(qnn: SwapTestSiameseQNN, dataset: CoMoFoDDataset, epochs: int = 10,
                 pbar.set_postfix(loss=f"{float(loss_val):.4f}")
 
         mean_loss = float(np.mean(epoch_losses))
-        history.append(mean_loss)
-        print(f"[Epoch {epoch+1}/{epochs}] mean loss = {mean_loss:.4f}")
+        train_history.append(mean_loss)
+        val_loss = eval_val_loss()
+        if val_loss is not None:
+            val_history.append(val_loss)
+            print(f"[Epoch {epoch+1}/{epochs}] train loss = {mean_loss:.4f}  "
+                  f"val loss = {val_loss:.4f}")
+        else:
+            print(f"[Epoch {epoch+1}/{epochs}] mean loss = {mean_loss:.4f}")
 
         ckpt_path = Path(checkpoint_dir) / f"swaptest_qnn_epoch{epoch+1}.npz"
         qnn.save(ckpt_path)
         print(f"[INFO] Checkpoint saved: {ckpt_path}")
 
     with open(Path(checkpoint_dir) / 'history.json', 'w') as f:
-        json.dump(history, f)
-    return history
+        json.dump({'train_loss': train_history, 'val_loss': val_history}, f)
+    return train_history
 
 
 # ============================================================================
 # INFERENCE: pairwise scoring + spatial offset-consistency filtering
 # ============================================================================
+
+def score_all_pairs(image: np.ndarray, qnn: SwapTestSiameseQNN, patch_size: int = 16,
+                     stride: int = 16, verbose: bool = True, batch_size: int = 256):
+    """
+    Run the circuit on every admissible pair EXACTLY ONCE and return the raw
+    similarities, unthresholded. Split out of detect_copy_move so that a
+    threshold/decision-rule sweep (see calibrate_threshold.py) pays this
+    O(N^2) circuit cost a single time per image instead of once per
+    candidate threshold - the sim_threshold/decision_pairs values shipped
+    so far (0.8/0.9, 8 pairs) were never actually calibrated against what
+    the trained circuit outputs, which is the direct cause of the
+    near-100%-recall / low-precision numbers in results_coverage*.csv.
+
+    Returns (coords, pairs, sims) - sims[k] is the score for pairs[k].
+    """
+    H, W = image.shape
+    coords, states = extract_all_patches(image, patch_size, stride)
+    pairs = generate_all_pairs(coords, min_spatial_dist=patch_size)
+
+    if verbose:
+        print(f"  [INFO] {len(coords)} patches -> {len(pairs)} pairs "
+              f"(exhaustive; v2's classical prefilter removed)")
+
+    sims = np.zeros(len(pairs), dtype=np.float64)
+    pbar = tqdm(total=len(pairs), desc="  Quantum pair scoring", disable=not verbose)
+    for start in range(0, len(pairs), batch_size):
+        chunk = pairs[start:start + batch_size]
+        offs = np.array([encode_offset(coords[j][0] - coords[i][0],
+                                        coords[j][1] - coords[i][1], H)
+                          for (i, j) in chunk])
+        states_a = states[[i for (i, j) in chunk]]
+        states_b = states[[j for (i, j) in chunk]]
+        sims[start:start + len(chunk)] = np.atleast_1d(
+            qnn.similarity(states_a, states_b, offs))
+        pbar.update(len(chunk))
+    pbar.close()
+
+    return coords, pairs, sims
+
+
+def mask_from_scores(coords, pairs, sims, patch_size: int, H: int, W: int,
+                      sim_threshold: float):
+    """Threshold already-computed pair scores into (mask, matched_pairs)."""
+    matched_pairs = [(i, j, float(s)) for (i, j), s in zip(pairs, sims)
+                      if s >= sim_threshold]
+    mask = np.zeros((H, W), dtype=np.uint8)
+    for (i, j, sim) in matched_pairs:
+        for idx in (i, j):
+            y, x = coords[idx]
+            mask[y:y + patch_size, x:x + patch_size] = 1
+    return mask.astype(np.uint8), matched_pairs
+
 
 def detect_copy_move(image: np.ndarray, qnn: SwapTestSiameseQNN, patch_size: int = 16,
                       stride: int = 16, sim_threshold: float = 0.8,
@@ -876,47 +980,20 @@ def detect_copy_move(image: np.ndarray, qnn: SwapTestSiameseQNN, patch_size: int
     Every stage that used to be classical is gone: no DCT descriptor, no
     lexicographic prefilter, no (dy, dx) Hough vote, no morphology. What
     remains is state preparation, circuit evaluation, and a threshold on
-    the measured expectation value.
-
-    Pairs are scored `batch_size` at a time in one QNode call each (see
-    SwapTestSiameseQNN.similarity) instead of one call per pair -
-    measured ~1.3x faster on lightning.qubit, bit-identical output.
+    the measured expectation value (see score_all_pairs/mask_from_scores,
+    which this is now a thin wrapper around).
     """
     H, W = image.shape
-    coords, states = extract_all_patches(image, patch_size, stride)
-    pairs = generate_all_pairs(coords, min_spatial_dist=patch_size)
-
-    if verbose:
-        print(f"  [INFO] {len(coords)} patches -> {len(pairs)} pairs "
-              f"(exhaustive; v2's classical prefilter removed)")
-
-    matched_pairs = []
-    pbar = tqdm(total=len(pairs), desc="  Quantum pair scoring", disable=not verbose)
-    for start in range(0, len(pairs), batch_size):
-        chunk = pairs[start:start + batch_size]
-        offs = np.array([encode_offset(coords[j][0] - coords[i][0],
-                                        coords[j][1] - coords[i][1], H)
-                          for (i, j) in chunk])
-        states_a = states[[i for (i, j) in chunk]]
-        states_b = states[[j for (i, j) in chunk]]
-        sims = np.atleast_1d(qnn.similarity(states_a, states_b, offs))
-        for (i, j), sim in zip(chunk, sims):
-            if sim >= sim_threshold:
-                matched_pairs.append((i, j, float(sim)))
-        pbar.update(len(chunk))
-    pbar.close()
+    coords, pairs, sims = score_all_pairs(image, qnn, patch_size, stride,
+                                          verbose=verbose, batch_size=batch_size)
+    mask, matched_pairs = mask_from_scores(coords, pairs, sims, patch_size, H, W,
+                                           sim_threshold)
 
     if verbose:
         print(f"  [INFO] {len(matched_pairs)} pairs above threshold {sim_threshold} "
               f"(circuit output is the only decision signal)")
 
-    mask = np.zeros((H, W), dtype=np.uint8)
-    for (i, j, sim) in matched_pairs:
-        for idx in (i, j):
-            y, x = coords[idx]
-            mask[y:y + patch_size, x:x + patch_size] = 1
-
-    return mask.astype(np.uint8), matched_pairs, coords
+    return mask, matched_pairs, coords
 
 
 # ============================================================================
@@ -998,6 +1075,16 @@ def main():
                               'circuit is translation-only, so rotated pairs are '
                               'unfittable targets that hold loss above the 0.25 '
                               'constant-predictor floor. See make_synthetic_pairs.')
+    parser.add_argument('--optimizer', type=str, default='adam', choices=['adam', 'gd'],
+                         help="Train mode only. 'adam' (default) fixes the flat/"
+                              "oscillating loss 'gd' (the old default) produced - "
+                              "see logs/train_full.log and checkpoints_pure/"
+                              "history.json.")
+    parser.add_argument('--val-images', type=int, default=4,
+                         help='Train mode only. Held-out images/epoch for a '
+                              'validation-loss readout (0 disables). Not used '
+                              'for gradient updates - lets you pick the best '
+                              'epoch by something other than noisy training loss.')
     parser.add_argument('--num-images', type=int, default=5)
     parser.add_argument('--output-dir', type=str, default='./results_pure')
     parser.add_argument('--seed', type=int, default=42)
@@ -1027,7 +1114,8 @@ def main():
         train(qnn, dataset, epochs=args.epochs, images_per_epoch=args.images_per_epoch,
               pairs_per_image=args.pairs_per_image, patch_size=args.patch_size,
               lr=args.lr, checkpoint_dir=args.checkpoint_dir, seed=args.seed,
-              rotate=args.train_rotations)
+              rotate=args.train_rotations, optimizer=args.optimizer,
+              val_images=args.val_images)
         return
 
     # test mode

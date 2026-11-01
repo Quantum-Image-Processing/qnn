@@ -1,0 +1,14 @@
+{
+  "id": "adiseshanramanan/cmfd-pure-qnn-train",
+  "title": "CMFD Pure-QNN Training (v3 swap-test)",
+  "code_file": "train_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "dataset_sources": ["mahnoor23/comofod", "adiseshanramanan/cmfd-qnn-code"],
+  "competition_sources": [],
+  "kernel_sources": []
+}
