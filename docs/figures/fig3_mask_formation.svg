@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1420 720" width="1420" height="720" role="img" aria-label="Mask formation: 32,640 circuit scores are thresholded at 0.90, both patches of every matched pair are painted into a 128 by 128 mask, the mask is rescaled to the original resolution, connected components give bounding boxes, and the matched-pair count gives the forged or authentic verdict.">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#1a1a1a"/></marker><marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#0f7d88"/></marker></defs>
+<g font-family="Helvetica, Arial, sans-serif" fill="#1a1a1a">
+<text x="710" y="34" font-size="15" text-anchor="middle" fill="#c0392b" font-weight="bold">Figure 3 &#8212; Mask Formation: scores back into an image</text>
+<text x="710" y="54" font-size="11" text-anchor="middle" fill="#5c5c5c" font-weight="normal">how 32,640 measured numbers become a localised forgery mask</text>
+<rect x="36" y="100" width="286" height="250" rx="3" fill="#ffffff" stroke="#9a9a9a" stroke-width="1.3"/>
+<circle cx="52" cy="96" r="11" fill="#1a1a1a"/>
+<text x="52" y="100" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">1</text>
+<text x="179.0" y="86" font-size="11.5" text-anchor="middle" fill="#1a1a1a" font-weight="bold">threshold the scores</text>
+<rect x="78" y="230" width="20" height="12" fill="#e8e8e8" stroke="#9a9a9a" stroke-width="0.6"/>
+<rect x="102" y="222" width="20" height="20" fill="#e8e8e8" stroke="#9a9a9a" stroke-width="0.6"/>
+<rect x="126" y="210" width="20" height="32" fill="#e8e8e8" stroke="#9a9a9a" stroke-width="0.6"/>
+<rect x="150" y="192" width="20" height="50" fill="#e8e8e8" stroke="#9a9a9a" stroke-width="0.6"/>
+<rect x="174" y="170" width="20" height="72" fill="#e8e8e8" stroke="#9a9a9a" stroke-width="0.6"/>
+<rect x="198" y="188" width="20" height="54" fill="#e8e8e8" stroke="#9a9a9a" stroke-width="0.6"/>
+<rect x="222" y="206" width="20" height="36" fill="#0f7d88" stroke="#9a9a9a" stroke-width="0.6"/>
+<rect x="246" y="218" width="20" height="24" fill="#0f7d88" stroke="#9a9a9a" stroke-width="0.6"/>
+<rect x="270" y="226" width="20" height="16" fill="#0f7d88" stroke="#9a9a9a" stroke-width="0.6"/>
+<line x1="218" y1="132" x2="218" y2="252" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>
+<text x="232" y="128" font-size="10.5" text-anchor="middle" fill="#c0392b" font-weight="bold">&#10216;Z&#10217; &#8805; 0.90</text>
+<text x="179" y="266" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">32,640 circuit scores</text>
+<text x="179" y="296" font-size="10.5" text-anchor="middle" fill="#1a1a1a" font-weight="normal">keep pairs scoring &#8805; threshold</text>
+<text x="179" y="320" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">the ONLY decision taken from the</text>
+<text x="179" y="334" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">circuit output &#8212; everything after</text>
+<text x="179" y="348" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">this is bookkeeping</text>
+<line x1="326" y1="215" x2="364" y2="215" stroke="#1a1a1a" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="370" y="100" width="286" height="250" rx="3" fill="#ffffff" stroke="#9a9a9a" stroke-width="1.3"/>
+<circle cx="386" cy="96" r="11" fill="#1a1a1a"/>
+<text x="386" y="100" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">2</text>
+<text x="513.0" y="86" font-size="11.5" text-anchor="middle" fill="#1a1a1a" font-weight="bold">paint both patches</text>
+<rect x="424" y="120" width="178" height="130" fill="#111111"/>
+<rect x="464" y="152" width="40" height="32" fill="#ffffff"/>
+<rect x="524" y="200" width="40" height="32" fill="#ffffff"/>
+<line x1="504" y1="168" x2="524" y2="216" stroke="#c0392b" stroke-width="1.3" stroke-dasharray="4 3"/>
+<text x="513" y="266" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">128 &#215; 128 binary mask</text>
+<text x="513" y="296" font-size="10.5" text-anchor="middle" fill="#1a1a1a" font-weight="normal">mark <tspan font-weight='bold'>BOTH</tspan> patches of each matched pair</text>
+<text x="513" y="320" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">a copy-move has two halves &#8212; the source</text>
+<text x="513" y="334" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">region and the pasted copy. Marking only</text>
+<text x="513" y="348" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">one would be half an answer.</text>
+<line x1="664" y1="215" x2="702" y2="215" stroke="#1a1a1a" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="708" y="100" width="286" height="250" rx="3" fill="#ffffff" stroke="#9a9a9a" stroke-width="1.3"/>
+<circle cx="724" cy="96" r="11" fill="#1a1a1a"/>
+<text x="724" y="100" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">3</text>
+<text x="851.0" y="86" font-size="11.5" text-anchor="middle" fill="#1a1a1a" font-weight="bold">rescale &#8594; bounding boxes</text>
+<rect x="762" y="120" width="178" height="130" fill="#e8e8e8" stroke="#9a9a9a"/>
+<rect x="797" y="147" width="50" height="42" fill="none" stroke="#c0392b" stroke-width="1.8"/>
+<rect x="857" y="195" width="50" height="42" fill="none" stroke="#c0392b" stroke-width="1.8"/>
+<text x="851" y="266" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">original resolution</text>
+<text x="851" y="296" font-size="10.5" text-anchor="middle" fill="#1a1a1a" font-weight="normal">connected components &#8594; boxes</text>
+<text x="851" y="320" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">display formatting only: it runs after</text>
+<text x="851" y="334" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">the verdict and feeds nothing back into</text>
+<text x="851" y="348" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">it, the mask, or any reported metric.</text>
+<line x1="1002" y1="215" x2="1040" y2="215" stroke="#1a1a1a" stroke-width="1.4" marker-end="url(#a)"/>
+<rect x="1046" y="100" width="338" height="250" rx="3" fill="#e4f0e4" stroke="#79a879" stroke-width="1.3"/>
+<circle cx="1062" cy="96" r="11" fill="#1a1a1a"/>
+<text x="1062" y="100" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">4</text>
+<text x="1215.0" y="86" font-size="11.5" text-anchor="middle" fill="#1a1a1a" font-weight="bold">verdict</text>
+<text x="1215" y="148" font-size="10.5" text-anchor="middle" fill="#5c5c5c" font-weight="normal">count the matched pairs</text>
+<rect x="1080" y="164" width="270" height="40" rx="3" fill="#ffffff" stroke="#79a879" stroke-width="1.3"/>
+<text x="1215" y="190" font-size="12" text-anchor="middle" fill="#1a1a1a" font-weight="normal">&#8805; 8 pairs  &#8594;  <tspan font-weight='bold' fill='#c0392b'>FORGED</tspan></text>
+<rect x="1080" y="212" width="270" height="40" rx="3" fill="#ffffff" stroke="#79a879" stroke-width="1.3"/>
+<text x="1215" y="238" font-size="12" text-anchor="middle" fill="#1a1a1a" font-weight="normal">&lt; 8 pairs  &#8594;  <tspan font-weight='bold'>AUTHENTIC</tspan></text>
+<text x="1215" y="286" font-size="10.2" text-anchor="middle" fill="#5c5c5c" font-weight="normal">outputs: verdict &#183; confidence &#183; mask &#183; boxes</text>
+<text x="1215" y="314" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">an aggregation of measurement outcomes,</text>
+<text x="1215" y="328" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">not a classical matching rule &#8212; it uses no</text>
+<text x="1215" y="342" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">patch content and no geometry</text>
+<rect x="36" y="410" width="1348" height="120" rx="3" fill="#e8e8e8" stroke="#9a9a9a" stroke-width="1.3"/>
+<text x="710" y="436" font-size="12.5" text-anchor="middle" fill="#c0392b" font-weight="bold">What this stage does NOT do</text>
+<rect x="110" y="456" width="182.0" height="28" rx="2" fill="#ffffff" stroke="#9a9a9a" stroke-width="1"/>
+<text x="201.0" y="474" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">DCT / histogram descriptor</text>
+<line x1="120" y1="470" x2="282.0" y2="470" stroke="#c0392b" stroke-width="1.2"/>
+<rect x="306.0" y="456" width="194.0" height="28" rx="2" fill="#ffffff" stroke="#9a9a9a" stroke-width="1"/>
+<text x="403.0" y="474" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">lexicographic block matching</text>
+<line x1="316.0" y1="470" x2="490.0" y2="470" stroke="#c0392b" stroke-width="1.2"/>
+<rect x="514.0" y="456" width="140.0" height="28" rx="2" fill="#ffffff" stroke="#9a9a9a" stroke-width="1"/>
+<text x="584.0" y="474" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">(dy, dx) Hough vote</text>
+<line x1="524.0" y1="470" x2="644.0" y2="470" stroke="#c0392b" stroke-width="1.2"/>
+<rect x="668.0" y="456" width="176.0" height="28" rx="2" fill="#ffffff" stroke="#9a9a9a" stroke-width="1"/>
+<text x="756.0" y="474" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">binary dilation / erosion</text>
+<line x1="678.0" y1="470" x2="834.0" y2="470" stroke="#c0392b" stroke-width="1.2"/>
+<rect x="858.0" y="456" width="62.0" height="28" rx="2" fill="#ffffff" stroke="#9a9a9a" stroke-width="1"/>
+<text x="889.0" y="474" font-size="9.8" text-anchor="middle" fill="#5c5c5c" font-weight="normal">RANSAC</text>
+<line x1="868.0" y1="470" x2="910.0" y2="470" stroke="#c0392b" stroke-width="1.2"/>
+<text x="710" y="508" font-size="10.2" text-anchor="middle" fill="#5c5c5c" font-weight="normal">None of these appears anywhere in the pipeline. The mask is built directly from thresholded circuit outputs.</text>
+<rect x="36" y="552" width="1348" height="120" rx="3" fill="#ffffff" stroke="#c0392b" stroke-width="1.4"/>
+<text x="710" y="578" font-size="12.5" text-anchor="middle" fill="#c0392b" font-weight="bold">Known limitation of removing the offset vote</text>
+<text x="710" y="604" font-size="10.4" text-anchor="middle" fill="#1a1a1a" font-weight="normal">Offset consistency &#8212; &#8220;many matched pairs share ONE displacement&#8221; &#8212; is a property of the pair ensemble, not of any single pair.</text>
+<text x="710" y="622" font-size="10.4" text-anchor="middle" fill="#1a1a1a" font-weight="normal">A circuit that sees one pair at a time cannot observe clustering it is never shown, so the offset register in Figure 1 is a weaker</text>
+<text x="710" y="640" font-size="10.4" text-anchor="middle" fill="#1a1a1a" font-weight="normal">substitute than the classical vote it replaced. A faithful quantum version needs quantum counting over all pairs at once (QRAM).</text>
+<text x="710" y="660" font-size="10.2" text-anchor="middle" fill="#5c5c5c" font-weight="normal">Expect more false positives on homogeneous regions &#8212; sky, walls, smooth concrete &#8212; than a vote-based pipeline would give.</text>
+</g></svg>

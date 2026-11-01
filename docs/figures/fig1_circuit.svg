@@ -1,0 +1,352 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1420 1270" width="1420" height="1270" role="img" aria-label="Gate-level quantum circuit for patch-pair comparison, with an explanation of every gate: amplitude embedding, RX RY RZ rotations carrying re-uploaded pixel data, a CNOT entangling ring, offset encoding, and the swap test of Hadamard, six controlled swaps, two controlled rotations, Hadamard and Pauli-Z measurement.">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#1a1a1a"/></marker><marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#0f7d88"/></marker></defs>
+<g font-family="Helvetica, Arial, sans-serif" fill="#1a1a1a">
+<text x="710" y="34" font-size="15" text-anchor="middle" fill="#c0392b" font-weight="bold">Figure 1 &#8212; Quantum Circuit: what every gate does</text>
+<text x="710" y="54" font-size="11" text-anchor="middle" fill="#5c5c5c" font-weight="normal">15 wires &#183; 158 gates &#183; depth 37 &#183; 58 trainable angles &#183; one evaluation compares ONE patch pair</text>
+<line x1="230" y1="130" x2="1250" y2="130" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="134" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q0</tspan></text>
+<line x1="230" y1="162" x2="1250" y2="162" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="166" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q1</tspan></text>
+<line x1="230" y1="194" x2="1250" y2="194" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="198" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q2</tspan></text>
+<line x1="230" y1="226" x2="1250" y2="226" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="230" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q3</tspan></text>
+<line x1="230" y1="258" x2="1250" y2="258" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="262" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q4</tspan></text>
+<line x1="230" y1="290" x2="1250" y2="290" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="294" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q5</tspan></text>
+<line x1="230" y1="338" x2="1250" y2="338" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="342" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q6</tspan></text>
+<line x1="230" y1="370" x2="1250" y2="370" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="374" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q7</tspan></text>
+<line x1="230" y1="402" x2="1250" y2="402" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="406" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q8</tspan></text>
+<line x1="230" y1="434" x2="1250" y2="434" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="438" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q9</tspan></text>
+<line x1="230" y1="466" x2="1250" y2="466" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="470" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q10</tspan></text>
+<line x1="230" y1="498" x2="1250" y2="498" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="502" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q11</tspan></text>
+<line x1="230" y1="546" x2="1250" y2="546" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="550" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q12</tspan></text>
+<line x1="230" y1="578" x2="1250" y2="578" stroke="#1a1a1a" stroke-width="1.05"/>
+<text x="218" y="582" font-size="10.5" text-anchor="end" fill="#1a1a1a" font-weight="normal">|0&#10217;<tspan font-size='9'> q13</tspan></text>
+<line x1="230" y1="626" x2="1250" y2="626" stroke="#0f7d88" stroke-width="1.5"/>
+<text x="218" y="630" font-size="10.5" text-anchor="end" fill="#0f7d88" font-weight="normal">|0&#10217;<tspan font-size='9'> q14</tspan></text>
+<path d="M 164 122 L 156 122 L 156 205.0 L 150 210.0 L 156 215.0 L 156 298 L 164 298" fill="none" stroke="#5c5c5c" stroke-width="1.2"/>
+<text x="142" y="208.0" font-size="11" text-anchor="end" fill="#1a1a1a" font-weight="bold">Register A</text>
+<text x="142" y="222.0" font-size="9.5" text-anchor="end" fill="#5c5c5c" font-weight="normal">patch &#968;&#8320; (64 px)</text>
+<path d="M 164 330 L 156 330 L 156 413.0 L 150 418.0 L 156 423.0 L 156 506 L 164 506" fill="none" stroke="#5c5c5c" stroke-width="1.2"/>
+<text x="142" y="416.0" font-size="11" text-anchor="end" fill="#1a1a1a" font-weight="bold">Register B</text>
+<text x="142" y="430.0" font-size="9.5" text-anchor="end" fill="#5c5c5c" font-weight="normal">patch &#968;&#8321; (64 px)</text>
+<path d="M 164 538 L 156 538 L 156 557.0 L 150 562.0 L 156 567.0 L 156 586 L 164 586" fill="none" stroke="#5c5c5c" stroke-width="1.2"/>
+<text x="142" y="560.0" font-size="11" text-anchor="end" fill="#1a1a1a" font-weight="bold">Offset</text>
+<text x="142" y="574.0" font-size="9.5" text-anchor="end" fill="#5c5c5c" font-weight="normal">&#916; = (dy,dx)</text>
+<text x="142" y="630" font-size="11" text-anchor="end" fill="#0f7d88" font-weight="bold">Ancilla</text>
+<rect x="248" y="117" width="58" height="186" rx="3" fill="#fdf6e3" stroke="#d6c68a" stroke-width="1.5"/>
+<text x="277" y="207.0" font-size="11" text-anchor="middle" fill="#1a1a1a" font-weight="bold">Amp</text>
+<text x="277" y="221.0" font-size="11" text-anchor="middle" fill="#1a1a1a" font-weight="bold">Embed</text>
+<rect x="248" y="325" width="58" height="186" rx="3" fill="#fdf6e3" stroke="#d6c68a" stroke-width="1.5"/>
+<text x="277" y="415.0" font-size="11" text-anchor="middle" fill="#1a1a1a" font-weight="bold">Amp</text>
+<text x="277" y="429.0" font-size="11" text-anchor="middle" fill="#1a1a1a" font-weight="bold">Embed</text>
+<circle cx="277" cy="100" r="11" fill="#1a1a1a"/>
+<text x="277" y="104" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">A</text>
+<rect x="330" y="119" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="349" y="134" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RX</text>
+<rect x="376" y="119" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="395" y="134" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<rect x="422" y="119" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="441" y="134" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RZ</text>
+<rect x="330" y="151" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="349" y="166" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RX</text>
+<rect x="376" y="151" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="395" y="166" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<rect x="422" y="151" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="441" y="166" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RZ</text>
+<rect x="330" y="183" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="349" y="198" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RX</text>
+<rect x="376" y="183" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="395" y="198" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<rect x="422" y="183" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="441" y="198" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RZ</text>
+<rect x="330" y="215" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="349" y="230" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RX</text>
+<rect x="376" y="215" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="395" y="230" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<rect x="422" y="215" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="441" y="230" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RZ</text>
+<rect x="330" y="247" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="349" y="262" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RX</text>
+<rect x="376" y="247" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="395" y="262" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<rect x="422" y="247" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="441" y="262" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RZ</text>
+<rect x="330" y="279" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="349" y="294" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RX</text>
+<rect x="376" y="279" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="395" y="294" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<rect x="422" y="279" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="441" y="294" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RZ</text>
+<rect x="330" y="327" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="349" y="342" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RX</text>
+<rect x="376" y="327" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="395" y="342" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<rect x="422" y="327" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="441" y="342" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RZ</text>
+<rect x="330" y="359" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="349" y="374" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RX</text>
+<rect x="376" y="359" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="395" y="374" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<rect x="422" y="359" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="441" y="374" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RZ</text>
+<rect x="330" y="391" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="349" y="406" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RX</text>
+<rect x="376" y="391" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="395" y="406" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<rect x="422" y="391" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="441" y="406" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RZ</text>
+<rect x="330" y="423" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="349" y="438" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RX</text>
+<rect x="376" y="423" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="395" y="438" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<rect x="422" y="423" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="441" y="438" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RZ</text>
+<rect x="330" y="455" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="349" y="470" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RX</text>
+<rect x="376" y="455" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="395" y="470" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<rect x="422" y="455" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="441" y="470" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RZ</text>
+<rect x="330" y="487" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="349" y="502" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RX</text>
+<rect x="376" y="487" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="395" y="502" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<rect x="422" y="487" width="38" height="22" rx="3" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.1"/>
+<text x="441" y="502" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RZ</text>
+<circle cx="395" cy="100" r="11" fill="#1a1a1a"/>
+<text x="395" y="104" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">B</text>
+<line x1="492" y1="130" x2="492" y2="162" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="492" cy="130" r="3.6" fill="#1a1a1a"/>
+<circle cx="492" cy="162" r="7.5" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="484.5" y1="162" x2="499.5" y2="162" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="492" y1="154.5" x2="492" y2="169.5" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="516" y1="162" x2="516" y2="194" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="516" cy="162" r="3.6" fill="#1a1a1a"/>
+<circle cx="516" cy="194" r="7.5" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="508.5" y1="194" x2="523.5" y2="194" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="516" y1="186.5" x2="516" y2="201.5" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="540" y1="194" x2="540" y2="226" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="540" cy="194" r="3.6" fill="#1a1a1a"/>
+<circle cx="540" cy="226" r="7.5" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="532.5" y1="226" x2="547.5" y2="226" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="540" y1="218.5" x2="540" y2="233.5" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="564" y1="226" x2="564" y2="258" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="564" cy="226" r="3.6" fill="#1a1a1a"/>
+<circle cx="564" cy="258" r="7.5" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="556.5" y1="258" x2="571.5" y2="258" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="564" y1="250.5" x2="564" y2="265.5" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="588" y1="258" x2="588" y2="290" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="588" cy="258" r="3.6" fill="#1a1a1a"/>
+<circle cx="588" cy="290" r="7.5" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="580.5" y1="290" x2="595.5" y2="290" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="588" y1="282.5" x2="588" y2="297.5" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="612" y1="290" x2="612" y2="130" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="612" cy="290" r="3.6" fill="#1a1a1a"/>
+<circle cx="612" cy="130" r="7.5" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="604.5" y1="130" x2="619.5" y2="130" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="612" y1="122.5" x2="612" y2="137.5" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="492" y1="338" x2="492" y2="370" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="492" cy="338" r="3.6" fill="#1a1a1a"/>
+<circle cx="492" cy="370" r="7.5" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="484.5" y1="370" x2="499.5" y2="370" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="492" y1="362.5" x2="492" y2="377.5" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="516" y1="370" x2="516" y2="402" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="516" cy="370" r="3.6" fill="#1a1a1a"/>
+<circle cx="516" cy="402" r="7.5" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="508.5" y1="402" x2="523.5" y2="402" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="516" y1="394.5" x2="516" y2="409.5" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="540" y1="402" x2="540" y2="434" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="540" cy="402" r="3.6" fill="#1a1a1a"/>
+<circle cx="540" cy="434" r="7.5" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="532.5" y1="434" x2="547.5" y2="434" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="540" y1="426.5" x2="540" y2="441.5" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="564" y1="434" x2="564" y2="466" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="564" cy="434" r="3.6" fill="#1a1a1a"/>
+<circle cx="564" cy="466" r="7.5" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="556.5" y1="466" x2="571.5" y2="466" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="564" y1="458.5" x2="564" y2="473.5" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="588" y1="466" x2="588" y2="498" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="588" cy="466" r="3.6" fill="#1a1a1a"/>
+<circle cx="588" cy="498" r="7.5" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="580.5" y1="498" x2="595.5" y2="498" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="588" y1="490.5" x2="588" y2="505.5" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="612" y1="498" x2="612" y2="338" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="612" cy="498" r="3.6" fill="#1a1a1a"/>
+<circle cx="612" cy="338" r="7.5" fill="#ffffff" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="604.5" y1="338" x2="619.5" y2="338" stroke="#1a1a1a" stroke-width="1.2"/>
+<line x1="612" y1="330.5" x2="612" y2="345.5" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="552" cy="100" r="11" fill="#1a1a1a"/>
+<text x="552" y="104" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">C</text>
+<path d="M 324 111 L 324 105 L 640 105 L 640 111" fill="none" stroke="#5c5c5c" stroke-width="1.1"/>
+<text x="482" y="84" font-size="10.5" text-anchor="middle" fill="#5c5c5c" font-weight="normal">one data re-uploading layer &#8212; repeated &#215;3</text>
+<line x1="482" y1="304" x2="482" y2="324" stroke="#0f7d88" stroke-width="1.6" stroke-dasharray="4 3"/>
+<circle cx="482" cy="314.0" r="4" fill="#0f7d88"/>
+<text x="500" y="318.0" font-size="10.5" text-anchor="start" fill="#0f7d88" font-weight="bold">shared &#952; &#8212; ONE weight tensor drives both registers (Siamese)</text>
+<rect x="330" y="535" width="130" height="22" rx="3" fill="#d6e6f5" stroke="#7ba7cf" stroke-width="1.2"/>
+<text x="395" y="550" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY(&#966; + &#916;&#183;&#960;)</text>
+<rect x="330" y="567" width="130" height="22" rx="3" fill="#d6e6f5" stroke="#7ba7cf" stroke-width="1.2"/>
+<text x="395" y="582" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY(&#966; + &#916;&#183;&#960;)</text>
+<circle cx="395" cy="520" r="11" fill="#1a1a1a"/>
+<text x="395" y="524" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">D</text>
+<rect x="690" y="611" width="32" height="30" rx="3" fill="#ffffff" stroke="#0f7d88" stroke-width="1.6"/>
+<text x="706" y="631" font-size="13" text-anchor="middle" fill="#0f7d88" font-weight="bold">H</text>
+<circle cx="706" cy="592" r="11" fill="#0f7d88"/>
+<text x="706" y="596" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">E</text>
+<line x1="760" y1="130" x2="760" y2="626" stroke="#0f7d88" stroke-width="1.3"/>
+<circle cx="760" cy="626" r="4.5" fill="#0f7d88"/>
+<line x1="754" y1="124" x2="766" y2="136" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="766" y1="124" x2="754" y2="136" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="754" y1="332" x2="766" y2="344" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="766" y1="332" x2="754" y2="344" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="790" y1="162" x2="790" y2="626" stroke="#0f7d88" stroke-width="1.3"/>
+<circle cx="790" cy="626" r="4.5" fill="#0f7d88"/>
+<line x1="784" y1="156" x2="796" y2="168" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="796" y1="156" x2="784" y2="168" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="784" y1="364" x2="796" y2="376" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="796" y1="364" x2="784" y2="376" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="820" y1="194" x2="820" y2="626" stroke="#0f7d88" stroke-width="1.3"/>
+<circle cx="820" cy="626" r="4.5" fill="#0f7d88"/>
+<line x1="814" y1="188" x2="826" y2="200" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="826" y1="188" x2="814" y2="200" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="814" y1="396" x2="826" y2="408" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="826" y1="396" x2="814" y2="408" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="850" y1="226" x2="850" y2="626" stroke="#0f7d88" stroke-width="1.3"/>
+<circle cx="850" cy="626" r="4.5" fill="#0f7d88"/>
+<line x1="844" y1="220" x2="856" y2="232" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="856" y1="220" x2="844" y2="232" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="844" y1="428" x2="856" y2="440" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="856" y1="428" x2="844" y2="440" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="880" y1="258" x2="880" y2="626" stroke="#0f7d88" stroke-width="1.3"/>
+<circle cx="880" cy="626" r="4.5" fill="#0f7d88"/>
+<line x1="874" y1="252" x2="886" y2="264" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="886" y1="252" x2="874" y2="264" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="874" y1="460" x2="886" y2="472" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="886" y1="460" x2="874" y2="472" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="910" y1="290" x2="910" y2="626" stroke="#0f7d88" stroke-width="1.3"/>
+<circle cx="910" cy="626" r="4.5" fill="#0f7d88"/>
+<line x1="904" y1="284" x2="916" y2="296" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="916" y1="284" x2="904" y2="296" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="904" y1="492" x2="916" y2="504" stroke="#0f7d88" stroke-width="1.8"/>
+<line x1="916" y1="492" x2="904" y2="504" stroke="#0f7d88" stroke-width="1.8"/>
+<circle cx="835" cy="100" r="11" fill="#0f7d88"/>
+<text x="835" y="104" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">F</text>
+<line x1="970" y1="546" x2="970" y2="611" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="970" cy="546" r="4.2" fill="#1a1a1a"/>
+<rect x="954" y="611" width="32" height="30" rx="3" fill="#d6e6f5" stroke="#7ba7cf" stroke-width="1.2"/>
+<text x="970" y="631" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<line x1="1014" y1="578" x2="1014" y2="611" stroke="#1a1a1a" stroke-width="1.2"/>
+<circle cx="1014" cy="578" r="4.2" fill="#1a1a1a"/>
+<rect x="998" y="611" width="32" height="30" rx="3" fill="#d6e6f5" stroke="#7ba7cf" stroke-width="1.2"/>
+<text x="1014" y="631" font-size="9.8" text-anchor="middle" fill="#1a1a1a" font-weight="normal">RY</text>
+<circle cx="992" cy="520" r="11" fill="#1a1a1a"/>
+<text x="992" y="524" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">G</text>
+<rect x="1066" y="611" width="32" height="30" rx="3" fill="#ffffff" stroke="#0f7d88" stroke-width="1.6"/>
+<text x="1082" y="631" font-size="13" text-anchor="middle" fill="#0f7d88" font-weight="bold">H</text>
+<circle cx="1082" cy="592" r="11" fill="#0f7d88"/>
+<text x="1082" y="596" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">H</text>
+<rect x="1126" y="610" width="44" height="32" rx="3" fill="#e0f0f1" stroke="#0f7d88" stroke-width="1.7"/>
+<path d="M 1136 634 A 12 12 0 0 1 1160 634" fill="none" stroke="#0f7d88" stroke-width="1.5"/>
+<line x1="1148" y1="634" x2="1160" y2="618" stroke="#0f7d88" stroke-width="1.5"/>
+<circle cx="1148" cy="592" r="11" fill="#0f7d88"/>
+<text x="1148" y="596" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">I</text>
+<path d="M 682 656 L 682 664 L 1178 664 L 1178 656" fill="none" stroke="#0f7d88" stroke-width="1.2"/>
+<text x="930" y="680" font-size="11" text-anchor="middle" fill="#0f7d88" font-weight="bold">S W A P   T E S T</text>
+<text x="710" y="716" font-size="13" text-anchor="middle" fill="#c0392b" font-weight="bold">What each gate does</text>
+<rect x="40" y="738" width="1340" height="26" rx="2" fill="#e8e8e8" stroke="#9a9a9a" stroke-width="1"/>
+<text x="70" y="755" font-size="10" text-anchor="start" fill="#5c5c5c" font-weight="bold">#</text>
+<text x="112" y="755" font-size="10" text-anchor="start" fill="#5c5c5c" font-weight="bold">symbol</text>
+<text x="228" y="755" font-size="10" text-anchor="start" fill="#5c5c5c" font-weight="bold">name</text>
+<text x="420" y="755" font-size="10" text-anchor="start" fill="#5c5c5c" font-weight="bold">operation</text>
+<text x="830" y="755" font-size="10" text-anchor="start" fill="#5c5c5c" font-weight="bold">why it is here</text>
+<rect x="40" y="764" width="1340" height="50" rx="0" fill="#fbfbfa" stroke="#9a9a9a" stroke-width="0.7"/>
+<circle cx="70" cy="789.0" r="9.5" fill="#1a1a1a"/>
+<text x="70" y="793.0" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">A</text>
+<text x="112" y="793.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="bold">AmpEmbed</text>
+<text x="228" y="793.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="normal">Amplitude Embedding</text>
+<text x="420" y="785.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Writes the 64 normalised pixel values into the</text>
+<text x="420" y="801.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">64 amplitudes of a 6-qubit state.</text>
+<text x="830" y="785.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">This is how an image patch enters the quantum computer.</text>
+<text x="830" y="801.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">64 numbers fit in 6 qubits &#8212; log&#8322; compression.</text>
+<rect x="40" y="814" width="1340" height="50" rx="0" fill="#ffffff" stroke="#9a9a9a" stroke-width="0.7"/>
+<circle cx="70" cy="839.0" r="9.5" fill="#1a1a1a"/>
+<text x="70" y="843.0" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">B</text>
+<text x="112" y="843.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="bold">RX RY RZ</text>
+<text x="228" y="843.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="normal">Single-qubit rotations</text>
+<text x="420" y="835.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Rotate a qubit about the x, y and z axes by</text>
+<text x="420" y="851.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">angle &#952;&#7522; + pixel&#7522;&#183;&#960;.</text>
+<text x="830" y="835.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">The trainable part. The pixel is re-uploaded INTO the angle;</text>
+<text x="830" y="851.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">without that the swap test cancels &#952; and the gradient is zero.</text>
+<rect x="40" y="864" width="1340" height="50" rx="0" fill="#fbfbfa" stroke="#9a9a9a" stroke-width="0.7"/>
+<circle cx="70" cy="889.0" r="9.5" fill="#1a1a1a"/>
+<text x="70" y="893.0" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">C</text>
+<text x="112" y="893.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="bold">CNOT</text>
+<text x="228" y="893.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="normal">Controlled-NOT</text>
+<text x="420" y="885.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Flips the target qubit when the control qubit</text>
+<text x="420" y="901.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">is |1&#10217;. Wired as a 6-qubit ring.</text>
+<text x="830" y="885.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Entangles neighbouring qubits so a layer can express</text>
+<text x="830" y="901.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">correlations across the patch, not just per-pixel effects.</text>
+<rect x="40" y="914" width="1340" height="50" rx="0" fill="#ffffff" stroke="#9a9a9a" stroke-width="0.7"/>
+<circle cx="70" cy="939.0" r="9.5" fill="#1a1a1a"/>
+<text x="70" y="943.0" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">D</text>
+<text x="112" y="943.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="bold">RY(&#966;+&#916;&#183;&#960;)</text>
+<text x="228" y="943.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="normal">Offset encoding</text>
+<text x="420" y="935.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Rotates each offset qubit by an angle set by</text>
+<text x="420" y="951.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">the pair's displacement &#916;.</text>
+<text x="830" y="935.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Puts WHERE the two patches sit relative to each other</text>
+<text x="830" y="951.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">into the circuit, alongside what they look like.</text>
+<rect x="40" y="964" width="1340" height="50" rx="0" fill="#fbfbfa" stroke="#9a9a9a" stroke-width="0.7"/>
+<circle cx="70" cy="989.0" r="9.5" fill="#0f7d88"/>
+<text x="70" y="993.0" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">E</text>
+<text x="112" y="993.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="bold">H</text>
+<text x="228" y="993.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="normal">Hadamard (open)</text>
+<text x="420" y="985.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Puts the ancilla into an equal superposition</text>
+<text x="420" y="1001.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">of |0&#10217; and |1&#10217;.</text>
+<text x="830" y="985.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Opens the interferometer: &#8220;swap the registers&#8221; and</text>
+<text x="830" y="1001.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">&#8220;leave them alone&#8221; now happen simultaneously.</text>
+<rect x="40" y="1014" width="1340" height="66" rx="0" fill="#ffffff" stroke="#9a9a9a" stroke-width="0.7"/>
+<circle cx="70" cy="1047.0" r="9.5" fill="#0f7d88"/>
+<text x="70" y="1051.0" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">F</text>
+<text x="112" y="1051.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="bold">CSWAP &#215;6</text>
+<text x="228" y="1051.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="normal">Controlled-SWAP (Fredkin)</text>
+<text x="420" y="1043.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Swaps qubit k of Register A with qubit k of</text>
+<text x="420" y="1059.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Register B, but only when the ancilla is |1&#10217;.</text>
+<text x="830" y="1035.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Six gates swap the WHOLE 6-qubit state &#8212; this is the</text>
+<text x="830" y="1051.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">comparison. Fewer than six compares only a fragment,</text>
+<text x="830" y="1067.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">and measurably inverts the answer.</text>
+<rect x="40" y="1080" width="1340" height="50" rx="0" fill="#fbfbfa" stroke="#9a9a9a" stroke-width="0.7"/>
+<circle cx="70" cy="1105.0" r="9.5" fill="#0f7d88"/>
+<text x="70" y="1109.0" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">G</text>
+<text x="112" y="1109.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="bold">CRY &#215;2</text>
+<text x="228" y="1109.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="normal">Controlled-RY</text>
+<text x="420" y="1101.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Rotates the ancilla by a trainable angle when</text>
+<text x="420" y="1117.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">an offset qubit is |1&#10217;.</text>
+<text x="830" y="1101.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Lets the displacement modulate the interference, so the</text>
+<text x="830" y="1117.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">score depends on geometry as well as appearance.</text>
+<rect x="40" y="1130" width="1340" height="50" rx="0" fill="#ffffff" stroke="#9a9a9a" stroke-width="0.7"/>
+<circle cx="70" cy="1155.0" r="9.5" fill="#0f7d88"/>
+<text x="70" y="1159.0" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">H</text>
+<text x="112" y="1159.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="bold">H</text>
+<text x="228" y="1159.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="normal">Hadamard (close)</text>
+<text x="420" y="1159.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Second Hadamard on the ancilla.</text>
+<text x="830" y="1151.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Closes the interferometer, turning the phase difference</text>
+<text x="830" y="1167.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">between swapped and unswapped branches into probability.</text>
+<rect x="40" y="1180" width="1340" height="50" rx="0" fill="#fbfbfa" stroke="#9a9a9a" stroke-width="0.7"/>
+<circle cx="70" cy="1205.0" r="9.5" fill="#0f7d88"/>
+<text x="70" y="1209.0" font-size="12" text-anchor="middle" fill="#ffffff" font-weight="bold">I</text>
+<text x="112" y="1209.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="bold">&#10216;Z&#10217;</text>
+<text x="228" y="1209.0" font-size="10.5" text-anchor="start" fill="#1a1a1a" font-weight="normal">Pauli-Z measurement</text>
+<text x="420" y="1209.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Measures the ancilla: &#10216;Z&#10217; = P(0) &#8722; P(1).</text>
+<text x="830" y="1201.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">Equals |&#10216;&#968;&#8320;|&#968;&#8321;&#10217;|&#178;, the squared overlap of the two patch</text>
+<text x="830" y="1217.0" font-size="9.6" text-anchor="start" fill="#5c5c5c" font-weight="normal">states &#8212; the similarity score, in [0,1].</text>
+</g></svg>
