@@ -35,6 +35,13 @@ checkpoints*/
 # a collaborator cannot reproduce an honest train/test separation.
 !checkpoints_pure/split.json
 
+# 9-wire Zernike model: models/zernike_9w.npz, its calibration json and
+# split.json are pushed (a few KB; the dashboard needs them). The per-epoch
+# checkpoints are regenerable with code/train_zernike.py (about 2 minutes),
+# so only their history.json, which the paper's training numbers come from,
+# is pushed.
+models/zernike_checkpoints/*.npz
+
 # ─── OS / editor junk ───
 .DS_Store
 Thumbs.db
