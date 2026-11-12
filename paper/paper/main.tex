@@ -404,8 +404,8 @@ Similarity threshold $\tau$ & 0.80--0.90\\
 Where this section's computational cost actually sits deserves a direct comment, since the four stages described here are not all equally expensive. Marking matched patches into a mask, accumulating the heatmap, comparing $M$ against $M_0$, and running connected-component labelling over the resulting mask are all linear in the number of patches or pixels involved: $O(N)$ operations over $N = 256$ patches or $H\times W$ pixels, each touched a small, bounded number of times. This stands in sharp contrast to the $O(N^2)$ cost of producing the matched pairs those operations consume in the first place (Section~\ref{sec:patches}, Table~\ref{tab:pairscaling}): scoring 32,640 pairs is what the circuit spends its time on, while turning the resulting 1,509-or-so surviving matches (Section~\ref{sec:overall}) into a mask, heatmap, and verdict is, by comparison, computationally free. Any future effort to speed this pipeline up, in other words, has to target the pair-scoring stage itself. Section~\ref{sec:preprocessing}'s working-resolution choice and Table~\ref{tab:pairscaling}'s scaling table are the relevant levers here, since nothing in this final stage is a meaningful share of the total cost to begin with.
 
 % ---------------------------------------------------------------------
-\subsection{Zernike-Moment Extension (ST-QNN-Z)}\label{sec:zernike}
-The pure ST-QNN deliberately keeps raw pixels (Section~\ref{sec:features}), exhaustive per-pair scoring (Section~\ref{sec:patches}), and an in-circuit offset term in place of a vote (Section~\ref{sec:offset}). Section~\ref{sec:results} shows that this combination does not detect: raw amplitude vectors are not rotation invariant, and a per-pair score cannot express the agreement among many pairs that separates a duplication from natural self-similarity (Section~\ref{sec:factor} proves the latter in closed form). We therefore introduce ST-QNN-Z, which follows the dense-field detector of Cozzolino, Poggi and Verdoliva~\cite{cozzolino2015} and changes three stages while keeping the swap test as the patch-comparison primitive. ST-QNN-Z is \emph{explicitly a hybrid}: it reintroduces a classical descriptor, a classical nearest-neighbour search schedule, and a classical spatial-consistency stage, precisely the components the pure ST-QNN removes. Its purpose is to establish what the swap test can contribute once it is placed inside a pipeline that is known to detect, and which stage carries the detection.
+\subsection{Pure Variants: Fewer Qubits and Rotation Invariance}\label{sec:zernike}
+The ST-QNN of the preceding sections has two measurable weaknesses that its design leaves open: it needs 15 wires per comparison, and raw amplitude vectors are not rotation invariant. This section specifies two variants that address them without adding any matching, voting, or post-processing stage. Each still scores one pair with one swap test and thresholds the result. The first replaces the raw pixels by Zernike moments~\cite{cozzolino2015,teague1980}, which is a classical data-preparation step and is reported as such. The second obtains rotation invariance inside the circuit.
 
 \subsubsection{Rotation-invariant Zernike descriptor}
 Let $I(\rho,\vartheta)$ be the image in polar coordinates centred on pixel $s$, restricted to the unit disk after scaling by the patch radius $R$. The Zernike basis functions are
@@ -430,12 +430,12 @@ Rotating the patch by $\alpha$ maps $I(\rho,\vartheta)$ to $I(\rho,\vartheta-\al
 \end{equation}
 Following~\cite{cozzolino2015}, we keep all orders $n\le 5$ with $m\ge 0$, which gives 12 moments, and define the descriptor of pixel $s$ as $\mathbf{z}(s) = \left[|Z_{nm}(s)|\right]_{n\le5}\in\mathbb{R}^{12}$.
 
-The integral~\eqref{eq:zmoment} is discretized on a \emph{polar} grid of $26$ radii $\times$ $32$ angles with $R = 8$ pixels, sampling the image by bilinear interpolation:
+The integral~\eqref{eq:zmoment} is discretized on a \emph{polar} grid of $32$ angles, sampling the image by bilinear interpolation. We use $26$ radii with $R = 8$ pixels at the native $512\times512$ resolution and $13$ radii with $R = 4$ pixels on the $8\times8$ patches of Table~\ref{tab:config}:
 \begin{equation}
 Z_{nm}(s) \approx \frac{n+1}{\pi}\sum_{i,j} I\!\left(s + \rho_i e^{j\vartheta_j}\right) R_{nm}\!\left(\tfrac{\rho_i}{R}\right) e^{-jm\vartheta_j}\,\rho_i\,\Delta\rho\,\Delta\vartheta .
 \label{eq:zdiscrete}
 \end{equation}
-Polar sampling makes~\eqref{eq:zinv} exact for rotations that are multiples of $2\pi/32 = 11.25^\circ$ and approximate otherwise~\cite{xin2007}; on CoMoFoD patches we measured a relative descriptor change of about $1\%$ at arbitrary angles, against $4.5$--$8\%$ for the same moments sampled on a Cartesian grid. Because the interpolation weights in~\eqref{eq:zdiscrete} do not depend on $s$, every moment is a correlation of the image with a fixed complex $19\times19$ kernel, so the descriptors of \emph{all} pixels are obtained with 24 real filtering operations.
+Polar sampling makes~\eqref{eq:zinv} exact for rotations that are multiples of $2\pi/32 = 11.25^\circ$ and approximate otherwise~\cite{xin2007}. Each moment is linear in the patch, so the descriptors of all patches follow from one fixed matrix product.
 
 \subsubsection{Four-qubit encoding and swap-test distance}
 The 12 magnitudes are zero-padded to 16 and amplitude-encoded on four qubits,
@@ -443,27 +443,32 @@ The 12 magnitudes are zero-padded to 16 and amplitude-encoded on four qubits,
 \ket{\psi_s} = \sum_{i=0}^{15} \tilde{z}_i(s)\ket{i}, \qquad \tilde{\mathbf{z}}(s) = \frac{\mathbf{z}(s)}{\|\mathbf{z}(s)\|_2},
 \label{eq:zenc}
 \end{equation}
-and two pixels are compared with a plain swap test, whose ancilla gives $S(s,t) = |\braket{\psi_s}{\psi_t}|^2$; the matching cost is the quantum distance
+and two pixels are compared with a plain swap test, whose ancilla gives $S(s,t) = |\braket{\psi_s}{\psi_t}|^2$; the corresponding distance is
 \begin{equation}
 D_Q(s,t) = 1 - \left|\braket{\psi_s}{\psi_t}\right|^2 .
 \label{eq:dq}
 \end{equation}
-One comparison therefore uses $4+4+1 = 9$ wires instead of the 15 of Table~\ref{tab:config}. The offset register is dropped, because Section~\ref{sec:factor} shows that it can only rescale each pair's score by a factor that depends on that pair alone, and that the trained factor is effectively constant. The re-uploading layers are also dropped: the Phase-2 measurement (Section~\ref{sec:performance}) shows that training them moves AUC by only $0.003$, so the comparison is used as a fixed, parameter-free quantum kernel. We keep the raw magnitudes, without per-feature standardization, in~\eqref{eq:zenc}; normalization makes $S$ invariant to contrast scaling, which is a CoMoFoD post-processing category, and this variant was measured to be the most robust (Section~\ref{sec:zres}).
+One comparison therefore uses $4+4+1 = 9$ wires instead of the 15 of Table~\ref{tab:config}, while the number of pairs stays the same, because the grid of patches does not change. The offset register is dropped, because Section~\ref{sec:factor} shows that it can only rescale each pair's score by a factor that depends on that pair alone, and that the trained factor is effectively constant. The re-uploading layers are also dropped, since the weights of Table~\ref{tab:config} are defined for six-qubit registers, and the Phase-2 measurement (Section~\ref{sec:performance}) shows that training them moves AUC by only $0.003$. The comparison is therefore a fixed, parameter-free quantum kernel. A trained version, which restores three tied re-uploading layers on the four-qubit registers ($3\times4\times3 = 36$ rotation angles, on 9 wires), is specified phase by phase in Section~\ref{sec:phases} and evaluated in Section~\ref{sec:zres}. Reducing qubits by using smaller patches instead does not save time: $4\times4$ patches also fit on four qubits per register, but they raise the number of pairs at $128\times128$ from 32,640 to 523,776.
 
-\subsubsection{Nearest-neighbour field by Modified PatchMatch}
-Instead of thresholding every pair, each pixel $s$ is assigned a single best partner through the offset field
-\begin{equation}
-\delta(s) = \arg\min_{\varphi:\ \|\varphi\|_\infty \ge T_{D1}} D_Q\!\left(s,\, s+\varphi\right),
-\label{eq:nnf}
-\end{equation}
-computed approximately with the Modified PatchMatch (M-PM) of~\cite{cozzolino2015}, a variant of PatchMatch~\cite{barnes2009}. After a random initialization, each iteration first \emph{propagates} candidate offsets from neighbours: besides the zero-order predictor $\delta^{0x}(s) = \delta(s^x)$, M-PM uses the first-order predictor
-\begin{equation}
-\delta^{1x}(s) = 2\,\delta(s^x) - \delta(s^{xx}), \qquad x\in\{r,c,d,a\},
-\label{eq:firstorder}
-\end{equation}
-along rows, columns, diagonals and anti-diagonals. A copy rotated or scaled by a linear map $A$ and translated by $t$ produces the linearly varying field $\delta(s) = (A - I)s + t$, on which~\eqref{eq:firstorder} is exact; this is what lets M-PM follow rotated copies that the zero-order predictor of basic PatchMatch loses beyond about $15^\circ$~\cite{cozzolino2015}. A \emph{random search} then tries $\delta(s) + R_i$ with $R_i$ uniform on a square of radius $2^{i-1}$, and every candidate is accepted only if it lowers $D_Q$. In our implementation all pixels are updated in parallel, and propagation evaluates the predictors at step sizes $k\in\{64,32,\dots,1\}$ in each iteration, so that a good offset spreads across a region in one iteration without a sequential raster scan; with $N_{\mathrm{it}} = 8$ this amounts to about 529 evaluations of $D_Q$ per pixel.
+\subsubsection{Pre-processing or post-processing}
+A Zernike descriptor can only act as pre-processing, because it defines what is encoded into the registers. Used as post-processing, it would re-examine pairs that the raw-pixel circuit has already flagged. That cannot recover a rotated copy, whose raw-pixel score never crosses the threshold in the first place, and it would add a classical verification stage to the decision path, which this work excludes.
 
-The minimum in~\eqref{eq:nnf} over a pixel's $L$ candidates could in principle be found with quantum minimum finding~\cite{durr1996} using $O(\sqrt{L})$ instead of $O(L)$ oracle queries. That requires a coherent oracle that writes $D_Q$ into a register, i.e.\ amplitude estimation around every swap test, and it saves little for the $L\approx10$ candidates per step of M-PM. On an exact statevector simulator the ideal output of that procedure is simply the exact argmin, which is what we compute; we report the quantum speed-up as a query-complexity statement only.
+\subsubsection{A quantum-native rotation-invariant kernel}\label{sec:qcht}
+The Zernike descriptor is computed classically. Rotation invariance can instead be obtained inside the circuit. Let a patch be sampled on a polar grid of $N_r$ radii and $N_\vartheta$ angles and amplitude-encoded on a radial register $\ket{r}$ and an angular register $\ket{\vartheta}$ ($N_rN_\vartheta = 64$, i.e.\ six qubits, as in ST-QNN), after removing the mean of the sampled values. A rotation by $2\pi k/N_\vartheta$ is a cyclic shift of $\ket{\vartheta}$, and a quantum Fourier transform (QFT) on the angular register turns it into a phase $e^{2\pi i km/N_\vartheta}$ on each angular frequency $\ket{m}$, exactly the circular-harmonic structure behind~\eqref{eq:zinv}. Note that applying the QFT to both registers before a swap test changes nothing, by the same cancellation as~\eqref{eq:degenerate}. Invariance requires discarding those phases, which we do by \emph{dephasing} the angular-frequency register, i.e.\ a CNOT from each of its qubits onto a fresh ancilla. The swap test between the two resulting mixed states $\rho_A,\rho_B$ then measures
+\begin{equation}
+\mathrm{Tr}(\rho_A\rho_B) = \sum_m \left|\bra{\hat\psi_A}P_m\ket{\hat\psi_B}\right|^2,
+\label{eq:qcht}
+\end{equation}
+where $\ket{\hat\psi}$ is the state after the QFT and $P_m$ projects the angular register onto frequency $m$. We normalize~\eqref{eq:qcht} by the purities $\mathrm{Tr}(\rho_A^2)$ and $\mathrm{Tr}(\rho_B^2)$, each itself obtainable with a swap test on two copies of a patch's state. With five dephasing qubits per register and one ancilla, the full circuit has $6+5+6+5+1 = 23$ wires. We verified~\eqref{eq:qcht} against that circuit in PennyLane on three random state pairs (maximum deviation $2.8\times10^{-17}$, about 2.4~s per pair); because of that cost, all results below evaluate~\eqref{eq:qcht} directly. This kernel is parameter-free and uses no classical descriptor; Section~\ref{sec:zres} compares it with the Zernike variant.
+
+% =====================================================================
+\section{Proposed Architecture in Four Phases}\label{sec:phases}
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{Paper-img/phase 1 ingestion and pre processing of data with diagram.jpeg}
+\caption{Phase~1, data ingestion and pre-processing. Panels 1--5: the input photograph is converted to grayscale and resized to $128\times128$, tiled into 256 patches of $8\times8$, reduced to 12 rotation-invariant Zernike magnitudes per patch by one fixed matrix~\eqref{eq:zmatrix}, and padded to 16 and normalized into a four-qubit amplitude state. The lower strips give the output of the phase and the rotation results of Table~\ref{tab:rotsource}.}
+\label{fig:phase1}
+\end{figure*}
 
 \subsubsection{Dense linear fitting (DLF) post-processing}
 Spatial consistency is enforced on the offset field, as in~\cite{cozzolino2015}, in seven steps: (1) median filtering of each offset component on a disk of radius $\rho_M$; (2) computation of the least-squares error of an affine fit to the field on a disk of radius $\rho_N$,
