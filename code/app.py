@@ -5,7 +5,7 @@ Upload a .jpg / .jpeg / .png image, run a copy-move forgery detector, and get:
 FORGED / AUTHENTIC verdict + a forgery heatmap + bounding boxes marking where
 the image was copy-move forged.
 
-Two engines, no tuning knobs - the sidebar offers exactly one choice:
+Three engines, no tuning knobs - the sidebar offers exactly one choice:
   * Pure classical - SIFT + RANSAC keypoint matching with geometric +
     compactness verification. Fast, and the one that actually works.
   * Pure quantum - the v3 Siamese swap-test QNN. Genuinely quantum end to
@@ -13,6 +13,8 @@ Two engines, no tuning knobs - the sidebar offers exactly one choice:
     in-circuit offset register, and no classical feature/prefilter/vote/
     morphology stage anywhere. Slower and less accurate than SIFT; that is
     the honest cost of removing the classical scaffolding.
+  * Zernike QNN - the 9-wire swap-test QNN on classical Zernike pre-processing.
+    Much faster and handles rotation, but it does not detect better than v3.
 
 Every threshold is pinned in SIFT_CFG / QNN_CFG below at the values the
 Phase-2 evaluation used, so the two methods are compared as whole methods.
@@ -21,6 +23,7 @@ Run:
     cd code
     streamlit run app.py
 """
+import json
 import sys
 from pathlib import Path
 
@@ -30,11 +33,14 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sift_cmfd import SiftForgeryDetector       # noqa: E402
 from inference import ForgeryDetector           # noqa: E402
+from inference_zernike import ZernikeForgeryDetector  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 # v3 (pure QNN) checkpoints are .npz - v2's .npy weights are a different
 # circuit shape and are deliberately rejected by SwapTestSiameseQNN.load().
 DEFAULT_CKPT = ROOT / "checkpoints_pure" / "swaptest_qnn_epoch10.npz"
+ZERNIKE_CKPT = ROOT / "models" / "zernike_9w.npz"
+ZERNIKE_CAL = ROOT / "models" / "zernike_9w_calibration.json"
 
 # Fixed operating points — the settings the Phase-2 results were produced with.
 SIFT_CFG = dict(work_long_side=1000, ratio=0.5, ransac_thresh=6.0, min_cluster=12)
@@ -60,22 +66,35 @@ def get_qnn(ckpt, n_layers, img_size, patch_size, stride):
                            patch_size=patch_size, stride=stride)
 
 
+@st.cache_resource(show_spinner=False)
+def get_zernike(ckpt):
+    return ZernikeForgeryDetector(ckpt)
+
+
 # ----------------------------- sidebar -------------------------------------
 # Only the engine choice is exposed. Every knob below is fixed at the value
 # the Phase-2 evaluation was run with, so the two engines are compared as
 # whole methods rather than as two piles of sliders.
 CLASSICAL = "Pure classical  ·  SIFT + RANSAC"
 QUANTUM = "Pure quantum  ·  swap-test QNN"
+ZERNIKE = "Zernike QNN  ·  9-wire swap test"
 
 st.sidebar.title("⚙️ Engine")
-engine = st.sidebar.radio("Detection method", [CLASSICAL, QUANTUM], label_visibility="collapsed")
+engine = st.sidebar.radio("Detection method", [CLASSICAL, QUANTUM, ZERNIKE], label_visibility="collapsed")
 use_sift = engine == CLASSICAL
 
 # ----------------------------- main ----------------------------------------
 st.title("🔍 Copy-Move Forgery Detection")
 st.caption("Upload an image to check whether a region was duplicated, and where.")
 
-if not use_sift:
+if engine == ZERNIKE:
+    st.warning(
+        "**Experimental — Zernike QNN.** Every trained parameter and pair comparison is in "
+        "the 9-wire quantum circuit, with Zernike moments as a classical pre-processing step. "
+        "**It is much faster than v3 and handles rotated copies, but it does not detect "
+        "forgeries better:** on held-out images its verdict is close to a coin flip, so do "
+        "not rely on it. Scores are computed by exact simulation of the circuit.")
+elif not use_sift:
     st.warning(
         "**Experimental — pure-QNN mode (v3).** Every classical detection stage has "
         "been removed, including the offset-consistency vote that previously "
@@ -101,6 +120,16 @@ if run and up is not None:
                                  min_cluster=SIFT_CFG["min_cluster"],
                                  progress=lambda f: bar.progress(min(f, 1.0), text="SIFT matching…"))
             signal_label = "Compact cluster"
+        elif engine == ZERNIKE:
+            if not (ZERNIKE_CKPT.exists() and ZERNIKE_CAL.exists()):
+                st.error(f"Trained model not found: {ZERNIKE_CKPT} and {ZERNIKE_CAL}. "
+                         "Run train_zernike.py, then calibrate_zernike.py."); st.stop()
+            cal = json.loads(ZERNIKE_CAL.read_text())
+            det = get_zernike(str(ZERNIKE_CKPT))
+            result = det.analyze(image, sim_threshold=cal["sim_threshold"],
+                                 decision_pairs=cal["decision_pairs"],
+                                 progress=lambda f: bar.progress(min(f, 1.0), text="Quantum pair scoring…"))
+            signal_label = "Matched pairs"
         else:
             if not DEFAULT_CKPT.exists():
                 st.error(f"Checkpoint not found: {DEFAULT_CKPT}"); st.stop()
