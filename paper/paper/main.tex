@@ -953,27 +953,23 @@ Two consequences follow. First, the offset term can only rescale each pair's con
 
 The identity also has a practical consequence for simulation. Since $\ket{\psi_A}$ depends only on patch A, the scores of all pairs follow from $N$ single-register (6-qubit) state simulations and one $N\times N$ Gram matrix, multiplied element-wise by $g$. This reproduces the 15-wire circuit's outputs exactly while reducing the scoring time for one $128\times128$ image from 14.76 minutes through the dashboard to 0.04 seconds, and takes 0.23 seconds for a $256\times256$ image (523,776 pairs), not counting image loading and patch extraction. On hardware each pair would still need its own swap test; the speed-up applies to simulation only.
 
-\subsection{Results of the Zernike Extension}\label{sec:zres}
+\subsection{Results of the Pure Variants}\label{sec:zres}
 
-\subsubsection{Descriptor robustness}
-Table~\ref{tab:zrobust} compares the descriptors under the protocol of Section~\ref{sec:zsetup}(i). The raw $8\times8$ amplitude vector of ST-QNN, compared by the swap test, survives a $5^\circ$ rotation but finds the true source in only 24\% of cases at $15^\circ$ and in none at $45^\circ$ or $90^\circ$. The Fridrich-style DCT descriptor behaves similarly under rotation. Zernike moments with polar sampling find the source in 98--100\% of cases at every rotation tested, and keep 86\% when a $15^\circ$ rotation is combined with JPEG compression. Polar sampling matters: the same moments on a Cartesian grid drop to 66\% at $30^\circ$. Comparing Zernike vectors with the swap test instead of the Euclidean distance costs a few points under JPEG, noise and scaling, but makes the comparison invariant to contrast scaling (86\% against 1\% under brightness/contrast change). The weaknesses of Zernike moments are scaling, where DCT and raw pixels are clearly better (96--99\% against 60--82\% at $\pm7\%$), and, to a lesser extent, JPEG compression and noise. The DCT-plus-histogram descriptor used by the retired hybrid version of ST-QNN (Section~\ref{sec:features}) is the weakest everywhere; it keeps the 12 largest DCT values sorted by magnitude and so discards which frequency each value belongs to. The quantum-native kernel of Section~\ref{sec:qcht}, with a $2\times32$ polar layout on six qubits, matches classical Zernike moments on rotation (96--100\%) without any classical descriptor; it is less robust to JPEG, noise and brightness changes. With a $4\times16$ layout on the same six qubits it reaches only 47\% at $15^\circ$, so the angular resolution of the encoding matters more than the qubit count.
+\subsubsection{Patch representation robustness}
+Table~\ref{tab:zrobust} and Fig.~\ref{fig:zrot} give the results of protocol (i) of Section~\ref{sec:zsetup}. The raw $8\times8$ amplitude vector of ST-QNN survives a $5^\circ$ rotation but finds the true source in only 26.8\% of cases at $15^\circ$ and under 1\% at $30^\circ$ and beyond. Zernike moments find it in 97--100\% of cases at every rotation tested, and the QFT kernel matches them with no classical descriptor. Mean removal is essential to the kernel: without it, rotations other than $90^\circ$ fall to 48--59\%. Neither variant is better everywhere. Raw pixels are clearly the strongest under scaling (98.0\% against 61.6\% and 70.8\%) and under noise, and all three are similar under JPEG compression.
 
 \begin{table*}[t]
 \centering
-\caption{Descriptor robustness on real CoMoFoD originals: percentage of 500 queries for which the true source is the nearest neighbour (within 2 px) of a transformed copy among all pixels of the image. ``swap'' denotes the swap-test score $|\langle\psi_a|\psi_b\rangle|^2$ of the amplitude-encoded vectors; ``Eucl.'' the Euclidean distance.}
+\caption{True source found (\%) among all positions on a 2-pixel grid, real CoMoFoD originals at $512\times512$, 500 queries per condition.}
 \label{tab:zrobust}
-\setlength{\tabcolsep}{3.6pt}
-\begin{tabular}{llcccccccccccc}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccccccccc}
 \toprule
-\textbf{Descriptor} & \textbf{Rule} & \textbf{JPEG70} & \textbf{JPEG50} & \textbf{Noise} & \textbf{B/C} & \textbf{Rot5} & \textbf{Rot15} & \textbf{Rot30} & \textbf{Rot45} & \textbf{Rot90} & \textbf{S0.93} & \textbf{S1.07} & \textbf{R15+J70}\\
+\textbf{Representation} & \textbf{None} & \textbf{5$^\circ$} & \textbf{15$^\circ$} & \textbf{30$^\circ$} & \textbf{45$^\circ$} & \textbf{90$^\circ$} & \textbf{JPEG 70} & \textbf{Noise 0.02} & \textbf{Scale 1.07} & \textbf{15$^\circ$ + JPEG 70}\\
 \midrule
-Raw $8\times8$ pixels (ST-QNN) & swap & 82 & 70 & 89 & 94 & 98 & 24 & 1 & 0 & 0 & 97 & 99 & 19\\
-DCT, 16 low-frequency coeff.~\cite{fridrich2003} & Eucl. & 96 & 94 & 92 & 6 & 98 & 62 & 9 & 1 & 0 & 96 & 96 & 56\\
-DCT top-12 + histogram (retired v2) & Eucl. & 46 & 33 & 29 & 2 & 24 & 12 & 7 & 4 & 12 & 22 & 25 & 11\\
-Zernike, Cartesian grid & Eucl. & 91 & 88 & 85 & 1 & 98 & 84 & 66 & 67 & 100 & 80 & 84 & 74\\
-Zernike, polar grid~\cite{cozzolino2015} & Eucl. & 92 & 89 & 83 & 1 & 100 & 99 & 100 & 100 & 100 & 80 & 82 & 90\\
-\textbf{Zernike, polar grid (ST-QNN-Z)} & \textbf{swap} & 87 & 81 & 75 & 86 & 99 & 98 & 99 & 99 & 100 & 60 & 64 & 86\\
-QFT + dephasing kernel, $2\times32$ (quantum) & swap & 62 & 49 & 66 & 66 & 100 & 98 & 98 & 96 & 100 & 59 & 65 & 61\\
+Raw $8\times8$ pixels (ST-QNN encoding), 6 qubits & 99.8 & 97.2 & 26.8 & 0.6 & 0.6 & 0.0 & 84.6 & 88.2 & 98.0 & 18.8\\
+Zernike magnitudes, 4 qubits & 99.8 & 99.2 & 97.4 & 98.4 & 99.2 & 99.8 & 89.4 & 75.8 & 61.6 & 86.0\\
+QFT + dephasing kernel, $2\times32$, 6 qubits & 99.8 & 98.6 & 97.4 & 97.4 & 98.6 & 99.8 & 85.2 & 82.0 & 70.8 & 80.2\\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -986,101 +982,99 @@ QFT + dephasing kernel, $2\times32$ (quantum) & swap & 62 & 49 & 66 & 66 & 100 &
   xlabel={Rotation of the copy (degrees)}, ylabel={True source found (\%)},
   xmin=0, xmax=90, ymin=0, ymax=105, xtick={0,5,15,30,45,90},
   tick label style={font=\scriptsize}, label style={font=\scriptsize},
-  legend style={font=\scriptsize, at={(0.97,0.40)}, anchor=east},
+  legend style={font=\scriptsize, at={(0.97,0.50)}, anchor=east},
   grid=major, grid style={gray!25},
   every axis plot/.append style={thick, mark size=1.6pt},
 ]
-\addplot[red!75!black, mark=*] coordinates {(0,100) (5,98) (15,24) (30,1) (45,0) (90,0)};
+\addplot[red!75!black, mark=*] coordinates {(0,99.8) (5,97.2) (15,26.8) (30,0.6) (45,0.6) (90,0)};
 \addlegendentry{Raw pixels (ST-QNN)}
-\addplot[orange!80!black, mark=triangle*] coordinates {(0,100) (5,98) (15,62) (30,9) (45,1) (90,0)};
-\addlegendentry{DCT}
-\addplot[blue!70!black, mark=square*] coordinates {(0,100) (5,99) (15,98) (30,99) (45,99) (90,100)};
-\addlegendentry{Zernike (ST-QNN-Z)}
-\addplot[green!50!black, mark=diamond*, dashed] coordinates {(0,100) (5,100) (15,98) (30,98) (45,96) (90,100)};
-\addlegendentry{QFT kernel (quantum)}
+\addplot[blue!70!black, mark=square*] coordinates {(0,99.8) (5,99.2) (15,97.4) (30,98.4) (45,99.2) (90,99.8)};
+\addlegendentry{Zernike}
+\addplot[green!50!black, mark=diamond*, dashed] coordinates {(0,99.8) (5,98.6) (15,97.4) (30,97.4) (45,98.6) (90,99.8)};
+\addlegendentry{QFT kernel}
 \end{axis}
 \end{tikzpicture}
 \caption{Rotation robustness of the patch representations of Table~\ref{tab:zrobust}.}
 \label{fig:zrot}
 \end{figure}
 
-\subsubsection{Detection on CoMoFoD}
-Table~\ref{tab:zdetect} reports pixel-level detection. On the eight scenes used for ST-QNN, ST-QNN-Z reaches a mean F1 of 0.482 with fixed parameters, against 0.0813 for ST-QNN with an oracle threshold and 0.078 for marking every pixel forged. Using the Euclidean distance instead of the swap test, i.e.\ the classical method of~\cite{cozzolino2015}, gives 0.519. Scenes 007 and 008 are missed; scene 008 has a forged area of only 0.3\% of the image (about 800 pixels, below the minimum region size $T_S$). On the broad set, ST-QNN-Z obtains a mean pixel F1 of 0.441 (median 0.415) and an image-level F-measure of 0.698, with 6 false alarms on 20 authentic images; the Euclidean variant obtains 0.471 (median 0.565) and 0.753, with 3 false alarms.
+\subsubsection{Detection on all 200 CoMoFoD scenes}
+With the deployed settings ($\tau = 0.90$, $M_0 = 8$), ST-QNN labels 56.5\% of forged images and 58.0\% of authentic images as forged, an accuracy of 49.3\%, and its mean pixel F1 is 0.015. The median matched-pair count is actually lower on forged images (36) than on authentic ones (50). The real-image result therefore confirms the synthetic-scene finding of Section~\ref{sec:compare}: the count reflects natural self-similarity, not duplication.
+
+Table~\ref{tab:zdetect} compares the variants. Marking every pixel forged gives a mean F1 of 0.098 on these scenes, so a fixed-threshold F1 of 0.098 means that a method has no threshold better than flagging the whole image. The best fixed-threshold result, 0.152, comes from a plain swap test on mean-removed patches at stride 2, with no trained layers. The trained circuit does not beat this parameter-free kernel in any row. Most importantly, every variant flags almost the same area on forged and authentic images, and image-level AUC stays between 0.500 and 0.515. Rotation invariance does help where it should, since the QFT kernel at stride 2 has a higher oracle F1 on rotation scenes (0.208) than on translation scenes (0.170), but the improvement does not separate forged images from authentic ones. Detection results in this table use no classical matching or voting stage.
+
+\begin{table*}[t]
+\centering
+\caption{Pure variants on all 200 raw CoMoFoD scenes at $128\times128$, forged and authentic. Marking every pixel forged gives F1 0.098.}
+\label{tab:zdetect}
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Variant} & \textbf{Wires} & \textbf{Oracle F1} & \textbf{Fixed-threshold F1} & \textbf{Flagged, forged (\%)} & \textbf{Flagged, authentic (\%)} & \textbf{Image AUC}\\
+\midrule
+ST-QNN as deployed, stride 8 & 15 & 0.143 & 0.098 & 100.0 & 100.0 & 0.500\\
+Plain swap test, raw pixels, stride 8 & 13 & 0.150 & 0.098 & 100.0 & 99.9 & 0.505\\
+Plain swap test, mean removed$^\ast$, stride 8 & 13 & 0.169 & 0.110 & 68.3 & 67.5 & 0.506\\
+Plain swap test, mean removed$^\ast$, stride 2 & 13 & 0.252 & 0.152 & 39.8 & 38.4 & 0.509\\
+Zernike, 12 magnitudes, stride 8 & 9 & 0.145 & 0.098 & 100.0 & 100.0 & 0.514\\
+Zernike, 12 magnitudes$^\ast$, stride 2 & 9 & 0.184 & 0.113 & 40.4 & 40.2 & 0.501\\
+Zernike, without $Z_{00}$$^\ast$, stride 2 & 9 & 0.175 & 0.115 & 39.2 & 38.6 & 0.515\\
+QFT kernel$^\ast$, stride 8 & 23 & 0.161 & 0.106 & 66.7 & 66.3 & 0.505\\
+QFT kernel$^\ast$, stride 2 & 23 & 0.195 & 0.124 & 51.7 & 50.9 & 0.504\\
+\bottomrule
+\multicolumn{7}{l}{\footnotesize $^\ast$ low-contrast patches (standard deviation below 0.02) are skipped.}
+\end{tabular}
+\end{table*}
+
+Two further readout rules were tested, and neither changes this conclusion. Keeping only patches whose best match stands out from their second-best match, on the 40 translation scenes at stride 2, gives the plain swap test an oracle F1 of 0.288 and a fixed-threshold F1 of 0.195, against 0.137 and 0.106 with the trained weights, which were trained on raw rather than mean-removed patches. It still flags 19.3\% of forged and 18.0\% of authentic images (image AUC 0.557). A whole-image shift search, in which the amplitude-encoded image is compared with a shifted copy of itself by a Hadamard test, gives an image-level AUC of 0.495 on all 200 scenes, or 0.517 with an edge filter at $512\times512$, and 0.61 in its best case, translation-only scenes at $512\times512$ on 19 wires.
+
+\subsubsection{Training the 9-wire variant}
+We trained the 36 rotation angles for 10 epochs of 80 images, with 12 synthetic pairs per image, including $90^\circ$ rotated positives, using Adam with a learning rate falling from 0.1 to 0.01 and a re-uploading scale of 2. Scenes were split into 140 for training, 20 for validation and 40 for testing, and training took 132 seconds on one CPU thread. On fixed validation pairs, the AUC rose from 0.584 to 0.676 and the loss fell from 0.331 to 0.269, and two further seeds gave similar gains (0.632 to 0.724, and 0.604 to 0.706). Unlike the raw-pixel ST-QNN (Section~\ref{sec:performance}), this circuit therefore learns a measurable improvement in ranking pairs.
+
+This gain does not carry over to detection. On the 40 test scenes the trained model has an image-level AUC of 0.500 and marks 99.1\% of both forged and authentic images, with an oracle F1 of 0.097 against 0.096 for ST-QNN on the same scenes. With its threshold and pair count chosen on the validation scenes, it labels 80.0\% of forged and 72.5\% of authentic test images as forged, an accuracy of 53.8\% (pixel F1 0.063). An image has 32,640 pairs, so even this improved ranking leaves far more false matches than true ones. Section~\ref{sec:phase4} adds that the dashboard's displayed confidence does not track this accuracy.
+
+\subsubsection{Where rotation handling comes from}
+Table~\ref{tab:rotsource} separates the parts of the model on the 20 first test scenes at $128\times128$: an $8\times8$ patch is rotated about its centre, and the query counts as correct when its true source, within 2 pixels, is the best match among all patches on a 2-pixel grid (10 locations per scene, 200 queries per angle). Zernike states alone, compared by a plain swap test, already find the source in 94.5--100\% of cases. The trained circuit keeps this (93.0--100\%), and removing its CNOT gates, which lowers the entanglement of the register states from 1.25 to 0.07 bits, hardly changes it (90.0--100\%). The ST-QNN circuit on raw pixels is more entangled (1.83 bits) and fails at $45^\circ$ and $90^\circ$. Rotation handling is therefore a property of the Zernike step of Phase~1, which the circuit preserves, and not of entanglement. What the CNOT gates contribute to pair ranking was not measured, since that would require training a circuit without them.
 
 \begin{table}[t]
 \centering
-\caption{Pixel-level detection on real CoMoFoD images. ST-QNN-Z uses fixed parameters (Table~\ref{tab:zparams}); the ST-QNN entry uses an oracle per-image threshold.}
-\label{tab:zdetect}
+\caption{True source found (\%) for an $8\times8$ patch rotated by the given angle, 20 test scenes at $128\times128$, 200 queries per angle. Entanglement is the mean entropy, in bits, between qubits 0--1 and the rest of a register state.}
+\label{tab:rotsource}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.3cm}>{\raggedright\arraybackslash}p{2.3cm}cccc}
+\toprule
+\textbf{Input} & \textbf{Circuit} & \textbf{15$^\circ$} & \textbf{45$^\circ$} & \textbf{90$^\circ$} & \textbf{Ent.}\\
+\midrule
+Raw pixels & none & 61.0 & 3.0 & 0.0 & --\\
+Raw pixels & ST-QNN layers, trained$^\ast$ & 36.5 & 2.0 & 0.0 & 1.83\\
+Zernike & none (plain swap test) & 97.5 & 94.5 & 100.0 & --\\
+Zernike & 9-wire, trained & 95.0 & 93.0 & 100.0 & 1.25\\
+Zernike & 9-wire, CNOTs removed & 93.0 & 90.0 & 100.0 & 0.07\\
+\bottomrule
+\multicolumn{6}{l}{\footnotesize $^\ast$ without the offset register, whose gain is almost constant (Section~\ref{sec:factor}).}
+\end{tabular}
+\end{table}
+
+\subsubsection{Speed}
+Table~\ref{tab:ztime} gives the measured time per image. The largest saving comes from removing the trained layers, not from the wire count alone: the plain swap test has 13 wires but runs nine times faster than the 13-wire ST-QNN. Zernike encoding reduces the time further, to 0.21 minutes with the plain swap test and 3.28 minutes with trained layers, at the same pair count. Exact simulation from one state per patch scores the trained model's pairs and displays a result in under a second through the dashboard. These are simulation times. On hardware each pair would need its own shots, as discussed in Section~\ref{sec:swaptest}.
+
+\begin{table}[t]
+\centering
+\caption{Time for one $128\times128$ image (32,640 pairs). The first row was timed through the dashboard; others are scaled from 256 pairs of the same image.}
+\label{tab:ztime}
 \setlength{\tabcolsep}{3pt}
 \begin{tabular}{lccc}
 \toprule
-\textbf{Method} & \textbf{F1} & \textbf{Prec.} & \textbf{Rec.}\\
+\textbf{Configuration} & \textbf{Wires} & \textbf{ms/pair} & \textbf{min/image}\\
 \midrule
-\multicolumn{4}{l}{\emph{Scenes 001--008 (raw forgeries)}}\\
-Mark every pixel forged & 0.078 & -- & 1.000\\
-ST-QNN (oracle $\tau$) & 0.081 & -- & --\\
-\textbf{ST-QNN-Z (swap-test cost)} & \textbf{0.482} & 0.410 & 0.662\\
-Zernike + M-PM + DLF, Euclidean~\cite{cozzolino2015} & 0.519 & 0.452 & 0.667\\
-\midrule
-\multicolumn{4}{l}{\emph{Broad set: 50 forged (30 raw, 10 JPEG, 10 noise)}}\\
-Mark every pixel forged & 0.090 & -- & 1.000\\
-\textbf{ST-QNN-Z (swap-test cost)} & \textbf{0.441} & 0.436 & 0.467\\
-Zernike + M-PM + DLF, Euclidean & 0.471 & 0.454 & 0.513\\
-\midrule
-\multicolumn{4}{l}{\emph{Image level: 50 forged + 20 authentic}}\\
- & \textbf{TPR} & \textbf{FPR} & \textbf{F}\\
-\textbf{ST-QNN-Z (swap-test cost)} & 0.60 & 0.30 & 0.698\\
-Zernike + M-PM + DLF, Euclidean & 0.64 & 0.15 & 0.753\\
+ST-QNN, dashboard, default threads & 15 & 27.1 & 14.76\\
+ST-QNN, one thread & 15 & 21.74 & 11.83\\
+No offset register, one thread & 13 & 12.99 & 7.07\\
+No offset register, 4 processes & 13 & 4.12 & 2.2\\
+Plain swap test, one thread & 13 & 1.45 & 0.79\\
+Zernike, trained layers, one thread & 9 & 6.04 & 3.28\\
+Zernike, plain swap test, one thread & 9 & 0.39 & 0.21\\
 \bottomrule
-\end{tabular}
-\end{table}
-
-Table~\ref{tab:zbreak} breaks the broad set down. Rotated forgeries, which ST-QNN cannot represent at all (Fig.~\ref{fig:zrot}), are detected with F1 0.609, and distortion with 0.580. Scaling (0.316) and noise (0.245) are the weakest conditions, in line with the descriptor results of Table~\ref{tab:zrobust}: Zernike moments are not scale invariant, and noise perturbs smooth patches most. The swap-test cost trails the Euclidean distance on most conditions because amplitude encoding normalizes the descriptor and so discards its norm, which is part of what distinguishes a low-contrast region from a textured one; this is also the likely cause of the higher false-alarm rate. The unoptimized NumPy implementation processes a $512\times512$ image in 18--23~s on one CPU, against 14--18 minutes for ST-QNN at $128\times128$.
-
-\begin{table}[t]
-\centering
-\caption{Pixel-level F1 on the broad CoMoFoD set by geometric transformation and by post-processing.}
-\label{tab:zbreak}
-\setlength{\tabcolsep}{3.5pt}
-\begin{tabular}{lcc}
-\toprule
-\textbf{Subset} & \textbf{ST-QNN-Z (swap)} & \textbf{Euclidean~\cite{cozzolino2015}}\\
-\midrule
-Translation & 0.352 & 0.344\\
-Rotation & 0.609 & 0.638\\
-Scaling & 0.316 & 0.310\\
-Distortion & 0.580 & 0.698\\
-Combination & 0.347 & 0.363\\
-\midrule
-Raw & 0.476 & 0.508\\
-JPEG (\texttt{JC5}) & 0.529 & 0.558\\
-Noise (\texttt{NA2}) & 0.245 & 0.270\\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsubsection{Which stage carries the detection}
-To separate the contributions, we also built a variant that stays fully quantum in every content-dependent stage: the QFT-plus-dephasing kernel of Section~\ref{sec:qcht} replaces the classical descriptor; every position's best partner is found by exhaustive swap-test scoring (the ideal output of quantum minimum finding); and spatial consistency is measured by a single circuit in which a position register in uniform superposition over a neighbourhood selects, by controlled state preparation, the patch at $u$ and its partner at $u+\delta$, so that one swap test returns the mean similarity of the whole neighbourhood at that offset. We verified this circuit against the mean of the individual pairwise scores to numerical precision. Run at $256\times256$ on scenes 001--008, with an oracle threshold, the per-pair score alone gives F1 0.086--0.088 and the in-circuit neighbourhood vote 0.092--0.094, both at the level of the trivial baseline (0.078). The neighbourhood vote fails because it asks whether a region is similar at a fixed offset, which smooth and self-similar regions also satisfy; on scene 001 the mean vote was in fact higher outside the forgery (0.918) than inside it (0.862). Replacing it by a classical count of how many neighbours \emph{independently} chose the same offset raises F1 to 0.18--0.22, and the full DLF stage with the Zernike descriptor reaches 0.48--0.52 (Table~\ref{tab:zdetect}). Table~\ref{tab:story} summarizes this progression. The detection is carried by the agreement among independently found matches, a statistic over many measurement outcomes that per-pair circuits, including the offset register (Section~\ref{sec:factor}), cannot express, and that a fully coherent quantum version could only obtain with quantum counting over a pair register.
-
-\begin{table}[t]
-\centering
-\caption{Where detection comes from (scenes 001--008, mean pixel F1). Rows above the line are quantum in every content-dependent stage.}
-\label{tab:story}
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{lc}
-\toprule
-\textbf{Pipeline} & \textbf{F1}\\
-\midrule
-Mark every pixel forged & 0.078\\
-ST-QNN: raw pixels, per-pair score, offset register$^\dagger$ & 0.081\\
-QFT kernel, best partner, per-pair score$^\dagger$ & 0.086--0.088\\
-QFT kernel, best partner, in-circuit neighbourhood vote$^\dagger$ & 0.092--0.094\\
-\midrule
-QFT kernel, best partner, classical offset-agreement count$^\dagger$ & 0.18--0.22\\
-ST-QNN-Z: Zernike, M-PM, DLF, swap-test cost & 0.482\\
-Zernike, M-PM, DLF, Euclidean distance~\cite{cozzolino2015} & 0.519\\
-\bottomrule
-\multicolumn{2}{l}{\footnotesize $^\dagger$ oracle per-image threshold; other rows use fixed parameters.}
 \end{tabular}
 \end{table}
 
@@ -1094,12 +1088,13 @@ The experimental findings, however, do not support that architecture as a workin
 
 This does not make the exercise uninformative. The contribution here is a fully specified, fully quantum architecture for pairwise patch comparison, together with a proof, both analytical and measured, that a tied unitary applied after amplitude embedding is provably degenerate under a swap test unless the patch data is re-uploaded into the rotation angles at every layer, a design constraint any future work on quantum similarity circuits of this kind will need to respect (Section~\ref{sec:siamese}). It also contributes an in-circuit mechanism for folding spatial-offset evidence into a swap-test readout, evaluated honestly rather than assumed to work, and an evaluation protocol, AUC against a matched classical baseline, full end-to-end detection on images with known ground truth, a six-condition robustness sweep, and a four-way component ablation, that is offered as a template for testing whether other quantum architectures proposed for this task actually earn their added complexity, rather than being reported only in isolation.
 
-The closed-form analysis of Section~\ref{sec:factor} turns the main negative result into a precise statement: the offset-conditioned readout factorizes into the content overlap times a gain that depends only on the pair's own displacement, so no training of this circuit can implement a spatial-consistency vote, and the trained gain is in fact constant to within 0.6\%. The Zernike extension ST-QNN-Z (Sections~\ref{sec:zernike} and~\ref{sec:zres}) shows what changes when the swap test is placed in a pipeline designed for the task. Four-qubit amplitude-encoded Zernike moments are rotation invariant where raw pixels are not (98--100\% against 0--24\% of true sources recovered at $15$--$90^\circ$), and with Modified PatchMatch matching and dense-linear-fitting post-processing the pixel-level F1 on real CoMoFoD images rises from 0.081 to 0.48, with fixed parameters, while each comparison uses 9 instead of 15 wires. The ablation of Table~\ref{tab:story} attributes this gain to the descriptor and, above all, to the consistency stage: replacing the swap test by the Euclidean distance improves results slightly (0.519), whereas removing the consistency stage returns any variant to the trivial baseline. We also gave a fully quantum rotation-invariant kernel, a QFT on a polar angle register followed by dephasing, which matches Zernike moments on rotation without a classical descriptor; it does not, by itself, make a pure-quantum detector work, because the detection signal is an agreement among many independently found matches.
+The closed-form analysis of Section~\ref{sec:factor} turns the main negative result into a precise statement: the offset-conditioned readout factorizes into the content overlap times a gain that depends only on the pair's own displacement, so no training of this circuit can implement a spatial-consistency vote, and the trained gain is in fact constant to within 0.6\%. On all 200 CoMoFoD scenes, forged and authentic, the deployed rule reaches an accuracy of 49.3\%, labelling 58.0\% of authentic images as forged (Section~\ref{sec:zres}). The pure variants improve what they were designed to improve. Four-qubit Zernike moments and a QFT-based quantum kernel find 97--100\% of rotated sources where raw pixels fall under 1\% at $30^\circ$ and beyond, and simulation time falls from 14.76 minutes per image to 0.21 minutes with 9 wires. The final model, specified in four phases in Section~\ref{sec:phases}, learns to rank pairs, with a validation AUC rising from 0.584 to 0.676, and gives a verdict in under a second, but its rotation handling comes from the classical Zernike step and not from the circuit's entanglement (Table~\ref{tab:rotsource}), and its held-out image accuracy is 53.8\%. None of them separates forged from authentic images, with image-level AUC at or below 0.515, and the trained circuit does not beat a parameter-free swap test. Together with the closed-form analysis, this indicates that the limit lies in scoring pairs independently and not in the choice of encoding or the number of qubits.
 
-The limitations follow directly from what was measured. The offset register did not produce a detectable improvement in the ablation study (Section~\ref{sec:ablation}), which is consistent with a structural argument raised in Section~\ref{sec:offset} and proved in Section~\ref{sec:factor}: genuine copy-move consistency is a property of many pairs agreeing on one displacement, and a circuit that scores one pair at a time has no way to observe that agreement across pairs it is never shown together. The circuit's measured fragility under ordinary image corruptions (Section~\ref{sec:robust}) works directly against real-world deployment, where JPEG compression and mild geometric adjustment are the norm rather than the exception. Every result in this paper was produced on a classical statevector simulator rather than physical quantum hardware, and the shot-budget analysis in Section~\ref{sec:swaptest} indicates that resolving a useful threshold decision on real hardware, at the pair counts this architecture requires, would carry a cost well beyond what the gate count and circuit depth alone suggest. ST-QNN-Z is a hybrid whose classical stages carry the detection; it remains weak on scaled and noisy forgeries, misses forgeries smaller than its minimum region size, and was evaluated on 50 forged and 20 authentic CoMoFoD images. Finally, no copy of CoMoFoD was available on the machine this paper was written on, so this paper's own experiments in Sections~\ref{sec:performance}--\ref{sec:ablation} were run against procedurally generated synthetic images rather than real photographs, a substitution flagged explicitly wherever it applies rather than left for the reader to notice.
+The limitations follow directly from what was measured. The offset register did not produce a detectable improvement in the ablation study (Section~\ref{sec:ablation}), which is consistent with a structural argument raised in Section~\ref{sec:offset} and proved in Section~\ref{sec:factor}: genuine copy-move consistency is a property of many pairs agreeing on one displacement, and a circuit that scores one pair at a time has no way to observe that agreement across pairs it is never shown together. The circuit's measured fragility under ordinary image corruptions (Section~\ref{sec:robust}) works directly against real-world deployment, where JPEG compression and mild geometric adjustment are the norm rather than the exception. Every result in this paper was produced on a classical statevector simulator rather than physical quantum hardware, and the shot-budget analysis in Section~\ref{sec:swaptest} indicates that resolving a useful threshold decision on real hardware, at the pair counts this architecture requires, would carry a cost well beyond what the gate count and circuit depth alone suggest. The rotation-invariant variants are weaker than raw pixels under scaling and noise. The detection benchmark uses raw forgeries only, so it does not cover CoMoFoD's post-processed variants. Finally, the experiments of Sections~\ref{sec:performance}--\ref{sec:ablation} were run on procedurally generated synthetic images, a substitution flagged wherever it applies, and only the results of Sections~\ref{sec:factor} and~\ref{sec:zres} use real CoMoFoD images.
 
-Several directions follow naturally from these limitations. The most immediate is repeating this paper's synthetic-image experiments, robustness sweep and ablation study included, directly against real CoMoFoD and COVERAGE images once available, to confirm whether the patterns observed here also hold on genuine photographs. A more fundamental direction is pursuing the honest replacement for the offset register's structural weakness identified above: quantum counting or amplitude estimation over a pair-index register, which could in principle observe agreement across many pairs at once rather than one at a time, though it requires QRAM not available to statevector simulation at this scale. For ST-QNN-Z, scale robustness could come from log-polar sampling with a QFT on the log-radius register, the quantum counterpart of the Fourier--Mellin descriptor of~\cite{cozzolino2015}, and a trainable unitary acting only on the radial register between the QFT and the dephasing step would make the quantum kernel learnable without losing rotation invariance or falling into the cancellation of~\eqref{eq:degenerate}. Running the trained circuit on physical quantum hardware, rather than only estimating its shot budget analytically, would test whether the fragility measured in Section~\ref{sec:robust} is a property of the architecture itself or an artefact of how it was simulated here. Finally, the same evaluation protocol applied in this paper to a cosine-similarity baseline could be run directly against the block-based, keypoint-based, and deep-learning methods of Section~\ref{sec:compare} under one identical dataset split and metric definition, closing the one comparison this work explicitly left open.
+Several directions follow naturally from these limitations. The most immediate is repeating this paper's synthetic-image experiments, robustness sweep and ablation study included, directly against real CoMoFoD and COVERAGE images, to confirm whether the patterns observed here also hold on genuine photographs. A more fundamental direction is pursuing the honest replacement for the offset register's structural weakness identified above: quantum counting or amplitude estimation over a pair-index register, which could in principle observe agreement across many pairs at once rather than one at a time, though it requires QRAM not available to statevector simulation at this scale. For the quantum kernel, scale robustness could come from log-polar sampling with a QFT on the log-radius register, the quantum counterpart of the Fourier--Mellin descriptor of~\cite{cozzolino2015}, and a trainable unitary acting only on the radial register between the QFT and the dephasing step would make the quantum kernel learnable without losing rotation invariance or falling into the cancellation of~\eqref{eq:degenerate}. Running the trained circuit on physical quantum hardware, rather than only estimating its shot budget analytically, would test whether the fragility measured in Section~\ref{sec:robust} is a property of the architecture itself or an artefact of how it was simulated here. Finally, the same evaluation protocol applied in this paper to a cosine-similarity baseline could be run directly against the block-based, keypoint-based, and deep-learning methods of Section~\ref{sec:compare} under one identical dataset split and metric definition, closing the one comparison this work explicitly left open.
 
+\FloatBarrier
 % =====================================================================
 \begin{thebibliography}{99}
 
@@ -1136,17 +1131,11 @@ M.~Schuld and N.~Killoran, ``Quantum machine learning in feature Hilbert spaces,
 \bibitem{cozzolino2015}
 D.~Cozzolino, G.~Poggi, and L.~Verdoliva, ``Efficient dense-field copy--move forgery detection,'' \emph{IEEE Trans. Inf. Forensics Security}, vol.~10, no.~11, pp.~2284--2297, Nov. 2015.
 
-\bibitem{barnes2009}
-C.~Barnes, E.~Shechtman, A.~Finkelstein, and D.~B.~Goldman, ``PatchMatch: A randomized correspondence algorithm for structural image editing,'' \emph{ACM Trans. Graph.}, vol.~28, no.~3, Art.~24, 2009.
-
 \bibitem{teague1980}
 M.~R.~Teague, ``Image analysis via the general theory of moments,'' \emph{J. Opt. Soc. Amer.}, vol.~70, no.~8, pp.~920--930, 1980.
 
 \bibitem{xin2007}
 Y.~Xin, M.~Pawlak, and S.~Liao, ``Accurate computation of Zernike moments in polar coordinates,'' \emph{IEEE Trans. Image Process.}, vol.~16, no.~2, pp.~581--587, Feb. 2007.
-
-\bibitem{durr1996}
-C.~D\"urr and P.~H{\o}yer, ``A quantum algorithm for finding the minimum,'' arXiv:quant-ph/9607014, 1996.
 
 \end{thebibliography}
 
