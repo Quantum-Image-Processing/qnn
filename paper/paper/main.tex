@@ -470,44 +470,132 @@ where $\ket{\hat\psi}$ is the state after the QFT and $P_m$ projects the angular
 \label{fig:phase1}
 \end{figure*}
 
-\subsubsection{Dense linear fitting (DLF) post-processing}
-Spatial consistency is enforced on the offset field, as in~\cite{cozzolino2015}, in seven steps: (1) median filtering of each offset component on a disk of radius $\rho_M$; (2) computation of the least-squares error of an affine fit to the field on a disk of radius $\rho_N$,
-\begin{equation}
-\epsilon^2(s) = \sum_{c\in\{y,x\}} \boldsymbol{\delta}_c^{T}\left(I - H\right)\boldsymbol{\delta}_c,\qquad H = S\left(S^TS\right)^{-1}S^T,
-\label{eq:dlf}
-\end{equation}
-where $\boldsymbol{\delta}_c$ stacks one offset component over the disk and $S = [\mathbf{1},\, \mathbf{y},\, \mathbf{x}]$ holds the homogeneous coordinates of its pixels relative to $s$, so that $H$ is fixed and $\epsilon^2$ is obtained by a few filtering operations; (3) thresholding $\epsilon^2(s) < T_\epsilon^2$; (4) removal of matches with $\|\delta(s)\|_2 < T_{D2}$; (5) removal of regions smaller than $T_S$ pixels; (6) mirroring, i.e.\ marking $s+\delta(s)$ for every detected $s$; and (7) dilation with a disk of radius $\rho_D = \rho_M + \rho_N$. The image-level verdict is \emph{forged} if any region survives. Table~\ref{tab:zparams} lists the parameters. The radii are those of~\cite{cozzolino2015}; the two size-dependent thresholds were rescaled \emph{a priori} from the $768\times1024$ images of~\cite{cozzolino2015} to the $512\times512$ CoMoFoD images, by area for $T_S$ and by linear size for $T_{D2}$, and were not tuned on test images.
+This section specifies the final model of this work, the 9-wire Zernike QNN of Section~\ref{sec:zernike} with three trained re-uploading layers, as four phases, each with its own diagram (Figs.~\ref{fig:phase1}--\ref{fig:phase4}). Phase~1 prepares the data classically, once per image. Phases~2 and~3 are the quantum circuit that scores one pair of patches: Phase~2 is the quantum neural network, whose 36 rotation angles are the only trained parameters of the model, and Phase~3 is the swap-test algorithm that compares the two outputs of that network. Phase~4 scores every pair of the image, turns the scores into the final output, a verdict, a mask and bounding boxes, and closes with the measured results. Table~\ref{tab:phases} summarizes the phases and the code that implements each one, and Table~\ref{tab:v3z} lists what changes from ST-QNN. All file names below are relative to the project repository.
 
-\begin{table}[t]
+\begin{table}[!htb]
 \centering
-\caption{Parameters of ST-QNN-Z on $512\times512$ CoMoFoD images.}
-\label{tab:zparams}
-\begin{tabular}{llc}
+\caption{The four phases of the 9-wire Zernike QNN and the code that implements them.}
+\label{tab:phases}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.6cm}>{\raggedright\arraybackslash}p{1.45cm}>{\raggedright\arraybackslash}p{1.35cm}>{\raggedright\arraybackslash}p{3.05cm}}
 \toprule
-\textbf{Symbol} & \textbf{Meaning} & \textbf{Value}\\
+\textbf{Phase} & \textbf{Runs as} & \textbf{Trained} & \textbf{Code}\\
 \midrule
-$R$ & Zernike patch radius (polar grid $26\times32$) & 8 px\\
-$n_{\max}$ & maximum Zernike order (12 moments) & 5\\
---- & qubits per patch / wires per comparison & 4 / 9\\
-$N_{\mathrm{it}}$ & M-PM iterations & 8\\
-$T_{D1}$ & minimum offset in the search & 8 px\\
-$\rho_M$ & median-filter radius & 4\\
-$\rho_N$ & DLF neighbourhood radius & 6\\
-$T_\epsilon^2$ & DLF error threshold & 300\\
-$T_{D2}$ & minimum offset of a detection & 29 px\\
-$T_S$ & minimum region size & 400 px\\
-$\rho_D$ & dilation radius & 10\\
+1 Ingestion and pre-processing & classical, once per image & nothing & \path{image_states}, \path{zernike_matrix}, \path{zernike_state} in \path{code/cmfd_zernike_swaptest.py}\\
+2 QNN circuit & quantum, in every pair's circuit & 36 rotation angles & \path{ZernikeSwapQNN}, \path{_reupload_block}; training in \path{code/train_zernike.py}\\
+3 Swap test and Siamese QNN & quantum, in every pair's circuit & nothing & \path{_circuit}, \path{similarity}, \path{ZernikeSwapQNN.score}\\
+4 Batch extraction and output & classical, once per image & nothing ($\tau$, $M_0$ calibrated) & \path{all_pair_scores}; \path{code/inference_zernike.py}, \path{code/calibrate_zernike.py}\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsubsection{A quantum-native rotation-invariant kernel}\label{sec:qcht}
-The Zernike descriptor is computed classically. Rotation invariance can instead be obtained inside the circuit. Let a patch be sampled on a polar grid of $N_r$ radii and $N_\vartheta$ angles and amplitude-encoded on a radial register $\ket{r}$ and an angular register $\ket{\vartheta}$ ($N_rN_\vartheta = 64$, i.e.\ six qubits, as in ST-QNN). A rotation by $2\pi k/N_\vartheta$ is a cyclic shift of $\ket{\vartheta}$, and a quantum Fourier transform (QFT) on the angular register turns it into a phase $e^{2\pi i km/N_\vartheta}$ on each angular frequency $\ket{m}$, exactly the circular-harmonic structure behind~\eqref{eq:zinv}. Note that applying the QFT to both registers before a swap test changes nothing, by the same cancellation as~\eqref{eq:degenerate}. Invariance requires discarding those phases, which we do by \emph{dephasing} the angular-frequency register, i.e.\ a CNOT from each of its qubits onto a fresh ancilla. The swap test between the two resulting mixed states $\rho_A,\rho_B$ then measures
+\begin{table}[!htb]
+\centering
+\caption{ST-QNN (Sections~\ref{sec:overall}--\ref{sec:finaldetection}) and the 9-wire Zernike QNN of this section.}
+\label{tab:v3z}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{>{\raggedright\arraybackslash}p{2.25cm}>{\raggedright\arraybackslash}p{2.5cm}>{\raggedright\arraybackslash}p{2.85cm}}
+\toprule
+ & \textbf{ST-QNN} & \textbf{9-wire Zernike QNN}\\
+\midrule
+Circuit input & 64 raw pixels & 12 Zernike magnitudes\\
+Qubits per register & 6 & 4\\
+Offset register & 2 qubits & removed\\
+Wires & 15 & 9\\
+Gates & 158 & 104\\
+Trained angles & 58 (54 tied + 4 offset) & 36 tied\\
+Re-upload scale & $\sqrt{64} = 8$ & 2\\
+Rotated training copies & no & yes, $90^\circ k$\\
+Optimizer & gradient descent & Adam, 0.1 to 0.01 (cosine)\\
+Validation & new random pairs each epoch & 400 fixed pairs, 20 separate scenes\\
+Decision rule & $\tau = 0.90$, $M_0 = 8$ & $\tau = 0.6$, $M_0 = 8{,}192$, chosen on validation\\
+Time per image & 14.76 min & 3.28 min per-pair circuits; under 1 s batch\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------
+\subsection{Phase 1: Data Ingestion and Pre-processing}\label{sec:phase1}
+Phase~1 turns an uploaded photograph into 256 quantum-ready vectors, one per patch, and is entirely classical. Fig.~\ref{fig:phase1} reads from left to right in five steps.
+\begin{enumerate}
+\item \emph{Input photograph.} Any JPEG or PNG image, of any size, in colour or grayscale, is read as uploaded.
+\item \emph{Grayscale and resize.} The image is converted to grayscale (the BT.601 luma of Section~\ref{sec:preprocessing}), resized to $128\times128$ with Lanczos resampling, and scaled to $[0,1]$. In the code this is the first part of \path{ZernikeForgeryDetector.analyze} in \path{code/inference_zernike.py}.
+\item \emph{Tile into patches.} \path{image_states} cuts the image into non-overlapping $8\times8$ patches at stride 8, which gives a $16\times16$ grid of 256 patches that covers every pixel.
+\item \emph{Zernike moments.} Each patch $\mathbf{x}_s\in\mathbb{R}^{64}$ is reduced to the magnitudes of its 12 Zernike moments of order $n\le5$, $m\ge0$~\eqref{eq:zdiscrete}, sampled on 13 radii and 32 angles within a radius of 4 pixels (\path{MAX_ORDER}, \path{N_RADII} and \path{N_ANGLES} in the code). Every moment is linear in the patch, so \path{zernike_matrix} builds one fixed complex matrix $\mathbf{M}\in\mathbb{C}^{12\times64}$ once, and all patches are processed by one matrix product:
 \begin{equation}
-\mathrm{Tr}(\rho_A\rho_B) = \sum_m \left|\bra{\hat\psi_A}P_m\ket{\hat\psi_B}\right|^2,
-\label{eq:qcht}
+\mathbf{z}_s = \left|\mathbf{M}\,\mathbf{x}_s\right| \in \mathbb{R}^{12}.
+\label{eq:zmatrix}
 \end{equation}
-where $\ket{\hat\psi}$ is the state after the QFT and $P_m$ projects the angular register onto frequency $m$. We normalize~\eqref{eq:qcht} by the purities $\mathrm{Tr}(\rho_A^2)$ and $\mathrm{Tr}(\rho_B^2)$, each itself obtainable with a swap test on two copies of a patch's state. We verified~\eqref{eq:qcht} against a 15-wire PennyLane circuit (maximum deviation $3.3\times10^{-15}$), and the measured score of a patch against its own $45^\circ$, $90^\circ$ and $135^\circ$ rotations was identical to four decimals. This kernel is parameter-free and fully quantum; Section~\ref{sec:zres} compares it with the classical descriptor.
+Rotating a patch only changes the phase of each moment~\eqref{eq:zinv}, so these magnitudes ignore rotation.
+\item \emph{Pad and normalize.} \path{zernike_state} pads the 12 magnitudes with 4 zeros to $16 = 2^4$ values and divides by their norm, giving the four-qubit amplitude state $\ket{\psi_s}$ of~\eqref{eq:zenc}. A blank patch, whose descriptor is zero, gets the uniform state.
+\end{enumerate}
+The output of Phase~1, shown in the first strip of Fig.~\ref{fig:phase1}, is 256 vectors $\psi_s\in\mathbb{R}^{16}$, each ready to be loaded onto a four-qubit register in Phase~2. Nothing in this phase is trained, so the model is a QNN with classical Zernike data preparation.
+
+Phase~1 nevertheless supplies two of the model's measured properties. Sending 12 magnitudes instead of 64 pixels is what reduces each register from six qubits to four and the circuit from 15 wires to 9. It also supplies rotation handling, as the second strip of the diagram states: a patch rotated by $45^\circ$ finds its true source in 94.5\% of cases with Zernike states, against 3.0\% with raw pixels, and the trained circuit of Phase~2 neither adds to this nor removes it (Table~\ref{tab:rotsource}).
+
+% ---------------------------------------------------------------------
+\subsection{Phase 2: The QNN Circuit}\label{sec:phase2}
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{Paper-img/phase 2 qnn circuit and daigram.jpeg}
+\caption{Phase~2, the QNN circuit. Registers A ($q_0$--$q_3$) and B ($q_4$--$q_7$) are amplitude-encoded with the Zernike states of patches $i$ and $j$ and processed by three data re-uploading layers~\eqref{eq:zangle}; the green rotation gates share the 36 trained angles of Table~\ref{tab:weights}, and the CNOT rings are fixed. The swap test on the ancilla $q_8$ is Phase~3. Panel A states what is trained and panel B how it was trained.}
+\label{fig:phase2}
+\end{figure*}
+Phase~2 is the trainable part of the model. It is implemented by \path{ZernikeSwapQNN} in \path{code/cmfd_zernike_swaptest.py}, which reuses the ST-QNN circuit class \path{SwapTestSiameseQNN} of \path{code/cmfd_swaptest_pipeline.py} with four-qubit registers and no offset register. The left of Fig.~\ref{fig:phase2} is the circuit, which runs in this order.
+
+\emph{Amplitude embedding.} The two \textsc{amp embed} blocks load $\ket{\psi_i}$ onto register~A and $\ket{\psi_j}$ onto register~B. Qubit $q_8$, the ancilla, waits for Phase~3.
+
+\emph{Re-uploading layers.} Each register then passes through three layers, written once in \path{_reupload_block} and applied to both registers. In layer $l\in\{0,1,2\}$, qubit $k\in\{0,\dots,3\}$ receives the rotations $R_X$, $R_Y$, $R_Z$ ($a = 0,1,2$), whose angles combine a trained weight with a value of the patch's own state (\path{_reupload_angle}):
+\begin{equation}
+\theta_{l,k,a}(\psi) = w_{l,k,a} + 2\pi\,\psi_{(12l+3k+a)\bmod 16}.
+\label{eq:zangle}
+\end{equation}
+A ring of CNOT gates from each qubit to the next follows. Writing $U_l(w,\psi)$ for layer $l$, the output state of a patch is
+\begin{equation}
+\ket{\phi_s} = U_2(w,\psi_s)\,U_1(w,\psi_s)\,U_0(w,\psi_s)\ket{\psi_s}.
+\label{eq:zphi}
+\end{equation}
+The factor 2 is the re-upload scale (\path{REUPLOAD_SCALE}). ST-QNN's $\sqrt{d}$ rule gives 4 for $d = 16$, which in trials left copied pairs at a score of about 0.49 and made training unstable, while 2 gave the lowest validation loss and a stable curve.
+
+\emph{What is trained} (panel A). The trainable layer is the rotation gates, drawn in green: the tensor $w\in\mathbb{R}^{3\times4\times3}$ of 36 angles, three layers by four qubits by three axes. The same tensor drives both registers, the dashed link in the diagram. The CNOT ring has no parameters; it entangles the four qubits so that a layer does not reduce to four independent single-qubit rotations. Every trained parameter of the model is one of these gate angles, and there is no classical trainable layer. With the two embeddings, 72 rotations, 24 CNOTs and the 6 gates of the swap test, the circuit has 104 gates.
+
+\emph{How it was trained} (panel B). Training is done by \path{code/train_zernike.py}. The weights start uniform in $[0,2\pi]$. Training pairs are generated from the authentic images of the 140 training scenes by ST-QNN's \path{make_synthetic_pairs} (Section~\ref{sec:setup}-A), with each patch passed through Phase~1: per image, 6 copied pairs, with the copy rotated by $90^\circ k$ and degraded by brightness and contrast changes, noise, JPEG re-encoding or a feathered paste, and 6 non-matching pairs degraded at the same rate, half of them brightness-matched. The loss is the squared error of the circuit output against the label $y\in\{0,1\}$,
+\begin{equation}
+\mathcal{L}(w) = \frac{1}{B}\sum_{b=1}^{B}\left(S_w(i_b,j_b) - y_b\right)^2, \qquad B = 12,
+\label{eq:zloss}
+\end{equation}
+minimized by \texttt{qml.AdamOptimizer} with adjoint gradients on \texttt{lightning.qubit}. The learning rate falls from 0.1 to 0.01 on a cosine schedule over 10 epochs of 80 images, i.e.\ 800 updates, which took 132~s on one CPU thread. After every epoch the script scores 400 fixed validation pairs from 20 separate scenes and saves a checkpoint to \path{models/zernike_checkpoints/}; the epoch with the best validation AUC, epoch~9, is saved as \path{models/zernike_9w.npz}, and the scene split is saved as \path{models/split.json}. The validation AUC rose from 0.584 to 0.676, against 0.567 for the parameter-free swap test, so the circuit does learn to rank pairs. Table~\ref{tab:weights} lists the trained angles.
+
+The strip at the bottom of the diagram restates the readout of Phase~3, $\langle Z\rangle = |\braket{\phi_i}{\phi_j}|^2$, and the changes from ST-QNN of Table~\ref{tab:v3z}.
+
+\begin{table}[!htb]
+\centering
+\caption{The 36 trained rotation angles $w_{l,k,a}$ in radians (epoch 9, \texttt{models/zernike\_9w.npz}), used by both registers. Angles are defined modulo $2\pi$.}
+\label{tab:weights}
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{ccrrr}
+\toprule
+\textbf{Layer} & \textbf{Qubit} & $R_X$ & $R_Y$ & $R_Z$\\
+\midrule
+1 & $q_0$ & 6.435 & 5.279 & 5.556\\
+1 & $q_1$ & 5.098 & 2.199 & 5.550\\
+1 & $q_2$ & 3.619 & 5.186 & 1.585\\
+1 & $q_3$ & 3.194 & 2.248 & 5.899\\
+\midrule
+2 & $q_0$ & 3.040 & 6.744 & 2.892\\
+2 & $q_1$ & 1.230 & 3.131 & 0.428\\
+2 & $q_2$ & 6.109 & 4.251 & 4.477\\
+2 & $q_3$ & 3.068 & 5.631 & 4.818\\
+\midrule
+3 & $q_0$ & 3.752 & $-2.003$ & 2.932\\
+3 & $q_1$ & 0.275 & 0.969 & 4.292\\
+3 & $q_2$ & 2.879 & 5.771 & 2.047\\
+3 & $q_3$ & 1.246 & 5.255 & 1.190\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------------
 
 % =====================================================================
 \section{Experimental Setup}\label{sec:setup}
